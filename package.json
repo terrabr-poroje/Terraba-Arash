@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
+    "build:pages": "NITRO_PRESET=cloudflare-pages vite build",
+    "build:worker": "NITRO_PRESET=cloudflare-module vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint . --rule 'prettier/prettier: off'",
