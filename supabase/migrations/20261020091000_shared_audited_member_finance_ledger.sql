@@ -1,0 +1,1 @@
+-- No-op compatibility marker. This migration was applied in the existing Supabase project under version 20261020090256; do not reapply it here.

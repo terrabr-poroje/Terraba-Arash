@@ -1,0 +1,128 @@
+# Deploy only the exact Terrabar release candidate after a clean build and route smoke tests.
+name: Deploy approved Terrabar production release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terrabar-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  build-verify-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the exact commit pushed to main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Validate required deployment secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.LOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "980efee43cd0c6512bb7ffce38e319c6"
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::Missing Cloudflare API token secret (CLOUDFLARE_API_TOKEN or LOUDFLARE_API_TOKEN)."
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::Missing Cloudflare account ID."
+            exit 1
+          fi
+
+      - name: Validate approved Supabase settings
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+          VITE_SUPABASE_URL="${VITE_SUPABASE_URL%/}"
+          if [ "$VITE_SUPABASE_URL" != "https://gznsxqeyhnuzglliijzz.supabase.co" ]; then
+            echo "::error::Refusing deployment: Supabase URL is not the approved Terrabar project."
+            exit 1
+          fi
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build release candidate
+        run: bun run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Configure and verify the existing production Worker
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = '.output/server/wrangler.json';
+          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+          config.name = 'terrabar-market';
+          config.routes = [
+            { pattern: 'terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' },
+            { pattern: 'www.terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' }
+          ];
+          if (!config.main) {
+            throw new Error('Refusing deployment: generated Worker entry point is missing.');
+          }
+          fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
+          const verified = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (verified.name !== 'terrabar-market') {
+            throw new Error('Refusing deployment: unexpected Worker name ' + verified.name);
+          }
+          const routes = verified.routes || [];
+          for (const hostname of ['terrabar.ir', 'www.terrabar.ir']) {
+            if (!routes.some(route => route.pattern === hostname + '/*' && route.zone_id === '5abde3806e64424f9179eb509cabe824' && !route.custom_domain)) {
+              throw new Error('Refusing deployment: approved custom domain missing: ' + hostname);
+            }
+          }
+          if (routes.some(route => !['terrabar.ir/*', 'www.terrabar.ir/*'].includes(route.pattern))) {
+            throw new Error('Refusing deployment: unexpected route found in production config');
+          }
+          console.log('Verified: Worker terrabar-market uses only the two approved zone-ID routes; existing DNS records are preserved.');
+          NODE
+
+      - name: Deploy to the existing production Worker
+        run: bunx wrangler deploy --config .output/server/wrangler.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.LOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "980efee43cd0c6512bb7ffce38e319c6"
+
+      - name: Verify production routes return the Terrabar page
+        run: |
+          set -euo pipefail
+          for base in https://terrabar.ir https://www.terrabar.ir; do
+            for route in / /auth /announce /requests /cart /professional-purchase; do
+              result="$(curl --silent --show-error --output /tmp/terrabar-production.html --write-out '%{http_code} %{time_total}' --retry 5 --retry-delay 2 --retry-connrefused "${base}${route}")"
+              code="${result%% *}"
+              elapsed="${result##* }"
+              if [ "$code" != "200" ]; then
+                echo "::error::${base}${route} returned HTTP ${code} after ${elapsed}s"
+                head -c 500 /tmp/terrabar-production.html || true
+                exit 1
+              fi
+              echo "PASS ${base}${route}: HTTP 200, ${elapsed}s"
+              grep -q 'ترابار' /tmp/terrabar-production.html || {
+                echo "::error::${base}${route} response did not contain expected Terrabar page text."
+                exit 1
+              }
+            done
+          done
