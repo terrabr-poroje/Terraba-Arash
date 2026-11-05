@@ -2,6 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { sendOtpSms, verifyOtpCode } from "./lib/sms-service";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -47,6 +48,41 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const url = new URL(request.url);
+
+      // Handle sms.ir OTP endpoints
+      if (url.pathname === "/api/sms/send-otp" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as { mobile?: string };
+          const result = await sendOtpSms(body?.mobile || "");
+          return new Response(JSON.stringify(result), {
+            status: result.success ? 200 : 400,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, message: "خطای سرور در ارسال پیامک" }), {
+            status: 500,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        }
+      }
+
+      if (url.pathname === "/api/sms/verify-otp" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as { mobile?: string; code?: string };
+          const result = verifyOtpCode(body?.mobile || "", body?.code || "");
+          return new Response(JSON.stringify(result), {
+            status: result.success ? 200 : 400,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, message: "خطای سرور در تأیید کد" }), {
+            status: 500,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        }
+      }
+
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
