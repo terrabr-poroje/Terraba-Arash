@@ -77,98 +77,100 @@ function AuthPage() {
 
   async function sendCode(event: FormEvent) {
     event.preventDefault();
+    let networkWatchdog: number | undefined;
     try {
-    setBusy(true);
-    const networkWatchdog = window.setTimeout(() => {
-      setBusy(false);
-      setError("ارتباط با سرور پاسخ نداد. لطفاً اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.");
-    }, 15000);
-    setError("");
-    setNotice("");
-    const normalizedPhone = normalizeIranPhone(phone);
-    const normalizedEmail = email.trim().toLowerCase();
-    if (authMethod === "phone" && !/^\+\d{10,15}$/.test(normalizedPhone)) {
-      setError("شماره موبایل را با قالب معتبر وارد کنید؛ نمونه: 09123456789");
-      setBusy(false);
-      return;
-    }
-    if (authMethod === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      setError("یک ایمیل معتبر وارد کنید.");
-      setBusy(false);
-      return;
-    }
-    if (mode === "signup" && (!province.trim() || !city.trim())) {
-      setError("استان و شهر محل فعالیت را انتخاب کنید.");
-      setBusy(false);
-      return;
-    }
-    if (mode === "signup" && !acceptedTerms) {
-      setError("برای ادامه، پذیرش قوانین ترابار الزامی است.");
-      setBusy(false);
-      return;
-    }
-    if (mode === "signup" && role !== "buyer" && !activity.trim()) {
-      setError("برای نقش حرفه‌ای، نوع فعالیت یا محصولات را وارد کنید.");
-      setBusy(false);
-      return;
-    }
-
-    if (authMethod === "phone") {
-      const smsRes = await requestSmsOtp(normalizedPhone);
-      if (!smsRes.success) {
-        setError(smsRes.message);
+      setBusy(true);
+      networkWatchdog = window.setTimeout(() => {
+        setBusy(false);
+        setError("ارتباط با سرور پاسخ نداد. لطفاً اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.");
+      }, 15000);
+      setError("");
+      setNotice("");
+      const normalizedPhone = normalizeIranPhone(phone);
+      const normalizedEmail = email.trim().toLowerCase();
+      if (authMethod === "phone" && !/^\+\d{10,15}$/.test(normalizedPhone)) {
+        setError("شماره موبایل را با قالب معتبر وارد کنید؛ نمونه: 09123456789");
         setBusy(false);
         return;
       }
-      setPhone(normalizedPhone);
-      setCodeSent(true);
-      setNotice(smsRes.message || "کد تأیید یک‌بارمصرف پیامک شد.");
-      setBusy(false);
-      return;
-    }
+      if (authMethod === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        setError("یک ایمیل معتبر وارد کنید.");
+        setBusy(false);
+        return;
+      }
+      if (mode === "signup" && (!province.trim() || !city.trim())) {
+        setError("استان و شهر محل فعالیت را انتخاب کنید.");
+        setBusy(false);
+        return;
+      }
+      if (mode === "signup" && !acceptedTerms) {
+        setError("برای ادامه، پذیرش قوانین ترابار الزامی است.");
+        setBusy(false);
+        return;
+      }
+      if (mode === "signup" && role !== "buyer" && !activity.trim()) {
+        setError("برای نقش حرفه‌ای، نوع فعالیت یا محصولات را وارد کنید.");
+        setBusy(false);
+        return;
+      }
 
-    // Email OTP flow
-    const authOptions = {
-      shouldCreateUser: mode === "signup" && !adminLogin,
-      data: mode === "signup"
-        ? {
-            full_name: fullName.trim(),
-            city,
-            province,
-            requested_role: role,
-            email: normalizedEmail,
-          }
-        : undefined,
-    };
-    const { error: otpError } = await supabase.auth.signInWithOtp({ email: normalizedEmail, options: authOptions as any });
-    if (otpError) {
-      const providerMessage = otpError.message ? ` (جزئیات: ${otpError.message})` : "";
-      setError(`ارسال کد ایمیل انجام نشد. تنظیمات Email Auth را در Supabase بررسی کنید.${providerMessage}`);
-    } else {
-      setEmail(normalizedEmail);
-      setCodeSent(true);
-      setNotice("کد عددی تأیید به ایمیل شما ارسال شد؛ صندوق ورودی و پوشه هرزنامه را بررسی کنید.");
-    }
-    setBusy(false);
+      if (authMethod === "phone") {
+        const smsRes = await requestSmsOtp(normalizedPhone);
+        if (!smsRes.success) {
+          setError(smsRes.message);
+          setBusy(false);
+          return;
+        }
+        setPhone(normalizedPhone);
+        setCodeSent(true);
+        setNotice(smsRes.message || "کد تأیید یک‌بارمصرف پیامک شد.");
+        setBusy(false);
+        return;
+      }
+
+      // Email OTP flow
+      const authOptions = {
+        shouldCreateUser: mode === "signup" && !adminLogin,
+        data: mode === "signup"
+          ? {
+              full_name: fullName.trim(),
+              city,
+              province,
+              requested_role: role,
+              email: normalizedEmail,
+            }
+          : undefined,
+      };
+      const { error: otpError } = await supabase.auth.signInWithOtp({ email: normalizedEmail, options: authOptions as any });
+      if (otpError) {
+        const providerMessage = otpError.message ? ` (جزئیات: ${otpError.message})` : "";
+        setError(`ارسال کد ایمیل انجام نشد. تنظیمات Email Auth را در Supabase بررسی کنید.${providerMessage}`);
+      } else {
+        setEmail(normalizedEmail);
+        setCodeSent(true);
+        setNotice("کد عددی تأیید به ایمیل شما ارسال شد؛ صندوق ورودی و پوشه هرزنامه را بررسی کنید.");
+      }
+      setBusy(false);
     } catch (error) {
       console.error("[Terrabar auth] sendCode failed:", error);
       setError("ارتباط با سرور پاسخ نداد. اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.");
     } finally {
-      window.clearTimeout(networkWatchdog);
+      if (networkWatchdog) window.clearTimeout(networkWatchdog);
       setBusy(false);
     }
   }
 
   async function verifyCode(event: FormEvent) {
     event.preventDefault();
+    let networkWatchdog: number | undefined;
     try {
-    setBusy(true);
-    const networkWatchdog = window.setTimeout(() => {
-      setBusy(false);
-      setError("ارتباط با سرور پاسخ نداد. لطفاً اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.");
-    }, 15000);
-    setError("");
-    setNotice("");
+      setBusy(true);
+      networkWatchdog = window.setTimeout(() => {
+        setBusy(false);
+        setError("ارتباط با سرور پاسخ نداد. لطفاً اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.");
+      }, 15000);
+      setError("");
+      setNotice("");
     const normalizedPhone = normalizeIranPhone(phone);
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -322,7 +324,7 @@ function AuthPage() {
       console.error("[Terrabar auth] verifyCode failed:", error);
       setError("ارتباط با سرور پاسخ نداد. اتصال اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید.");
     } finally {
-      window.clearTimeout(networkWatchdog);
+      if (networkWatchdog) window.clearTimeout(networkWatchdog);
       setBusy(false);
     }
   }
