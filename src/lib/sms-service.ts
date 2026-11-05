@@ -1,11 +1,11 @@
 /**
  * Service for sending and verifying OTP SMS via sms.ir REST API
- * Template: 856278 ("کد ورود \n#OTP#")
+ * Template: 888217 ("این یک پیام تست و فاقد اعتبار است\nکد:#OTP#\n...")
  */
 
 const SMS_IR_API_KEY =
   process.env.SMS_IR_API_KEY || "4tE2QxFzjvScsUxVkmhYJVZ7tmB32ZRexUFcp8fcRDEmtOcW";
-const SMS_IR_TEMPLATE_ID = Number(process.env.SMS_IR_TEMPLATE_ID || 856278);
+const SMS_IR_TEMPLATE_ID = Number(process.env.SMS_IR_TEMPLATE_ID || 888217);
 const SMS_IR_TEMPLATE_PARAM = process.env.SMS_IR_TEMPLATE_PARAM || "OTP";
 
 // In-memory OTP storage: normalizedMobile -> { code, expiresAt, attempts }
