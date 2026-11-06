@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { MarketplaceShell } from '@/components/marketplace-shell';
 import { Button } from '@/components/ui/button';
+import { POLYFILL_INLINE_SCRIPT } from "@/lib/browser-polyfills";
 
 function NotFoundComponent() {
   return (
@@ -79,7 +80,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { httpEquiv: "X-UA-Compatible", content: "IE=edge" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=5" },
+      { name: "theme-color", content: "#1e704b" },
+      { name: "format-detection", content: "telephone=no" },
       { title: "ترابار | بازار میوه و تره‌بار ایران" },
       { name: "description", content: "ترابار؛ بستری برای ارتباط باغدار، کشاورز، تأمین‌کننده، بارفروش و خریدار، معرفی بار و پیدا کردن محصولات بازار میوه و تره‌بار ایران." },
       { property: "og:title", content: "ترابار | بازار میوه و تره‌بار ایران" },
@@ -112,9 +116,16 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="fa" dir="rtl">
       <head>
+        {/* Universal polyfills executed immediately before any script or module */}
+        <script dangerouslySetInnerHTML={{ __html: POLYFILL_INLINE_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
+        <noscript>
+          <div style={{ padding: "16px", backgroundColor: "#fff3cd", color: "#856404", textAlign: "center", borderBottom: "1px solid #ffeeba", fontFamily: "Tahoma, sans-serif", fontSize: "14px" }}>
+            برای مشاهده کامل و استفاده از امکانات سامانه ترابار، لطفاً جاوااسکریپت مرورگر خود را فعال نمایید یا از نسخه جدید مرورگر استفاده کنید.
+          </div>
+        </noscript>
         {children}
         <Scripts />
       </body>

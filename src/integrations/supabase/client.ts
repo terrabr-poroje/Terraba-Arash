@@ -183,6 +183,53 @@ export const supabase: any = {
   from(tableName: string) {
     return createD1QueryBuilder(tableName);
   },
+  storage: {
+    from(bucketName: string) {
+      return {
+        async upload(path: string, file: File | Blob, options?: any) {
+          try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("key", path);
+            formData.append("bucket", bucketName);
+
+            const res = await fetch("/api/storage/upload", {
+              method: "POST",
+              body: formData,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              return { data: null, error: new Error(err.message || "Upload failed") };
+            }
+            const data = await res.json();
+            return { data: { path: data.fileKey }, error: null };
+          } catch (e: any) {
+            return { data: null, error: e };
+          }
+        },
+        async remove(paths: string[]) {
+          try {
+            for (const p of paths) {
+              await fetch("/api/storage/delete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ key: p }),
+              });
+            }
+            return { data: paths, error: null };
+          } catch (e: any) {
+            return { data: null, error: e };
+          }
+        },
+        async createSignedUrl(path: string, _expiresIn = 3600) {
+          return { data: { signedUrl: `/api/storage/file/${path.replace(/^\/+/, "")}` }, error: null };
+        },
+        getPublicUrl(path: string) {
+          return { data: { publicUrl: `/api/storage/file/${path.replace(/^\/+/, "")}` } };
+        },
+      };
+    },
+  },
   functions: {
     async invoke() {
       return { data: null, error: null };

@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Uses the audited production members/member_roles schema. */
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ClipboardList, Package, ShieldCheck, Store, UserRound } from "lucide-react";
+import { ArrowLeft, ClipboardList, Cloud, Package, ShieldCheck, Store, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, signOut } from "@/lib/auth";
 import { pageHead } from "@/lib/marketplace";
 import { RatingForm } from "@/components/rating-form";
+import { FileUploader } from "@/components/file-uploader";
 
 export const Route = createFileRoute("/account")({
   head: () => pageHead("حساب کاربری من", "مدیریت پروفایل، عضویت‌ها، بارها و سفارش‌های حساب ترابار."),
@@ -129,7 +130,21 @@ function AccountPage() {
           <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">سوابق سفارش و امور مالی</h2><Button asChild variant="outline" size="sm"><Link to="/orders">پیگیری همه سفارش‌ها و درخواست‌ها <ArrowLeft className="mr-1 size-4" /></Link></Button></div>
           {!orders.length ? <p className="mt-4 text-sm text-muted-foreground">هنوز سفارشی برای این حساب ثبت نشده است.</p> : <div className="mt-4 grid gap-3">{orders.map(o => <div key={o.id} className="rounded-lg border border-border p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold">فاکتور شماره {new Intl.NumberFormat("fa-IR").format(o.invoice_number)}</span><span className="rounded-full bg-secondary px-3 py-1 text-xs">{orderLabels[o.status] || o.status}</span></div><p className="mt-2 text-sm text-muted-foreground">{o.quantity ?? "—"} {o.unit || "واحد"} · مبلغ {Number(o.total_price ?? 0).toLocaleString("fa-IR")} تومان</p><p className="mt-1 text-xs text-muted-foreground">پرداخت: {paymentLabels[o.payment_status || "unpaid"] || o.payment_status || "نامشخص"} · تحویل: {orderLabels[o.delivery_status || ""] || o.delivery_status || "در انتظار ثبت وضعیت"}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(o.created_at).toLocaleDateString("fa-IR")}</p>{member && o.buyer_member_id === member.id && (["delivered", "received", "completed"].includes(o.status) || o.delivery_status === "delivered") && <div className="mt-3 grid gap-2 sm:grid-cols-2">{o.load_id && <RatingForm key={`${o.id}-load`} orderId={o.id} reviewerMemberId={member.id} targetType="load" targetId={o.load_id} title="امتیاز به بار خریداری‌شده" />}{o.seller_member_id && o.seller_member_id !== member.id && <RatingForm key={`${o.id}-seller`} orderId={o.id} reviewerMemberId={member.id} targetType="member" targetId={o.seller_member_id} title="امتیاز به فروشنده" />}</div>}</div>)}</div>}
         </div>
-
+        <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Cloud className="size-5 text-primary" />
+              <h2 className="text-lg font-bold">فضای ابری پارس‌پک (ParsPack Object Storage)</h2>
+            </div>
+            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              بایندینگ مخزن: c833723
+            </span>
+          </div>
+          <p className="mb-4 text-xs leading-6 text-muted-foreground">
+            تمامی تصاویر پیش از بارگذاری به‌صورت خودکار با الگوریتم مدرن به فرمت <strong>WebP</strong> تبدیل شده و با کاهش حجم حداکثری در فضای ابری پارس‌پک ذخیره می‌شوند. پس از حذف توسط شما، فایل بلافاصله از سرور پارس‌پک پاک خواهد شد.
+          </p>
+          <FileUploader folder="user-documents" maxFiles={6} />
+        </div>
       </div>
     </section>
   );

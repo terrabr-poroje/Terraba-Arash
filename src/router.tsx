@@ -1,6 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
+import { initBrowserPolyfills } from "./lib/browser-polyfills";
+
+// Initialize polyfills immediately on client
+if (typeof window !== "undefined") {
+  initBrowserPolyfills();
+}
 
 export const getRouter = () => {
   const queryClient = new QueryClient();

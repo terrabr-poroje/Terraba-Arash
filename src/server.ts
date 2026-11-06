@@ -10,6 +10,11 @@ import {
   validateD1Session,
   invalidateD1Session,
 } from "./lib/d1-database";
+import {
+  uploadToParsPack,
+  deleteFromParsPack,
+  getFileFromParsPack,
+} from "./lib/parspack-storage";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -184,6 +189,135 @@ export default {
             status: 200,
             headers: { "content-type": "application/json; charset=utf-8" },
           });
+        }
+      }
+
+      // ==========================================
+      // ParsPack Object Storage Endpoints
+      // ==========================================
+
+      // Upload file to ParsPack Storage
+      if (url.pathname === "/api/storage/upload" && request.method === "POST") {
+        try {
+          const formData = await request.formData();
+          const file = formData.get("file") as File | null;
+          const folder = (formData.get("folder") as string) || "uploads";
+          const customKey = formData.get("key") as string | null;
+
+          if (!file) {
+            return new Response(JSON.stringify({ success: false, message: "فایلی جهت بارگذاری ارسال نشده است." }), {
+              status: 400,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            });
+          }
+
+          const arrayBuffer = await file.arrayBuffer();
+          const buffer = new Uint8Array(arrayBuffer);
+
+          // Force WebP extension for all image uploads
+          let key: string;
+          if (customKey) {
+            key = customKey.replace(/\.[^.]+$/, "") + ".webp";
+          } else {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, "0");
+            const random = Math.random().toString(36).substring(2, 10);
+            key = `${folder}/${year}/${month}/${Date.now()}_${random}.webp`;
+          }
+
+          const uploadResult = await uploadToParsPack(key, buffer, "image/webp");
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              fileKey: uploadResult.key,
+              url: uploadResult.url,
+              size: buffer.byteLength,
+              contentType: "image/webp",
+              message: "فایل با موفقیت با فرمت WebP در فضای ابری پارس‌پک ذخیره شد.",
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            },
+          );
+        } catch (err: any) {
+          console.error("[storage/upload error]", err);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              message: `خطا در بارگذاری فایل در فضای ابری پارس‌پک: ${err?.message || err}`,
+            }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            },
+          );
+        }
+      }
+
+      // Delete file from ParsPack Storage
+      if (url.pathname === "/api/storage/delete" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as { key?: string };
+          const key = body?.key;
+
+          if (!key) {
+            return new Response(JSON.stringify({ success: false, message: "شناسه فایل مشخص نشده است." }), {
+              status: 400,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            });
+          }
+
+          const deleteResult = await deleteFromParsPack(key);
+          return new Response(JSON.stringify(deleteResult), {
+            status: 200,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        } catch (err: any) {
+          console.error("[storage/delete error]", err);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              message: `خطا در حذف فایل از فضای ابری پارس‌پک: ${err?.message || err}`,
+            }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            },
+          );
+        }
+      }
+
+      // Serve/proxy file from ParsPack Storage
+      if (url.pathname.startsWith("/api/storage/file/") && request.method === "GET") {
+        const fileKey = url.pathname.replace(/^\/api\/storage\/file\//, "");
+        if (!fileKey) {
+          return new Response("Not found", { status: 404 });
+        }
+
+        try {
+          const fileData = await getFileFromParsPack(fileKey);
+          if (!fileData || !fileData.stream) {
+            return new Response("File not found in storage", { status: 404 });
+          }
+
+          const responseHeaders: Record<string, string> = {
+            "Content-Type": fileData.contentType || "image/webp",
+            "Cache-Control": "public, max-age=31536000, immutable",
+          };
+          if (fileData.contentLength) {
+            responseHeaders["Content-Length"] = String(fileData.contentLength);
+          }
+
+          return new Response(fileData.stream, {
+            status: 200,
+            headers: responseHeaders,
+          });
+        } catch (err) {
+          console.error("[storage/file serve error]", fileKey, err);
+          return new Response("Error fetching file from storage", { status: 500 });
         }
       }
 

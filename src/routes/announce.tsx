@@ -83,23 +83,11 @@ function JalaliDateField({ label, value, min, onChange }: { label: string; value
   </div>;
 }
 
+import { convertToOptimizedWebP } from '@/lib/image-optimizer';
+
 async function optimizeLoadPhoto(file: File): Promise<File> {
-  const bitmap = await createImageBitmap(file);
-  try {
-    const maxDimension = 1600;
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-    if (scale === 1 && file.size <= 1_200_000) return file;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext('2d');
-    if (!context) return file;
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', 0.82));
-    if (!blob || blob.size >= file.size) return file;
-    const baseName = file.name.replace(/\\.[^.]+$/, '') || 'load-photo';
-    return new File([blob], baseName + '.webp', { type: 'image/webp', lastModified: Date.now() });
-  } finally { bitmap.close(); }
+  const result = await convertToOptimizedWebP(file, { maxWidth: 1600, maxHeight: 1600, quality: 0.78 });
+  return result.file;
 }
 function AnnouncePage() {
   const { user, loading, canAnnounce } = useAuth();
@@ -470,7 +458,8 @@ function AnnouncePage() {
           try { optimizedFile = await optimizeLoadPhoto(file); }
           catch { optimizedFile = file; }
           const safeName = optimizedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const path = `${user.id}/${insertedLoad.id}/${crypto.randomUUID()}-${safeName}`;
+          const randomId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+          const path = `${user.id}/${insertedLoad.id}/${randomId}-${safeName}`;
           const { error: uploadError } = await supabase.storage.from('terrabar-load-images').upload(path, optimizedFile, { contentType: optimizedFile.type, upsert: false });
           if (uploadError) {
             const uploadedPaths = imageRows.map(image => image.storage_path);
@@ -528,8 +517,27 @@ function AnnouncePage() {
               <input readOnly dir="ltr" aria-label="لینک اختصاصی ویترین" value={typeof window !== 'undefined' ? window.location.origin + '/store/' + encodeURIComponent(storefrontMemberId) : '/store/' + storefrontMemberId} className="field-input min-w-0 flex-1 bg-white text-left text-sm" />
               <Button type="button" className="shrink-0" onClick={async () => {
                 const link = window.location.origin + '/store/' + encodeURIComponent(storefrontMemberId);
-                try { await navigator.clipboard.writeText(link); setStoreLinkCopied(true); window.setTimeout(() => setStoreLinkCopied(false), 2500); }
-                catch { const field = document.querySelector<HTMLInputElement>('input[aria-label="لینک اختصاصی ویترین"]'); field?.focus(); field?.select(); setManageError('کپی خودکار انجام نشد؛ لینک انتخاب شده است، آن را کپی کنید.'); }
+                try {
+                  if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                    await navigator.clipboard.writeText(link);
+                  } else {
+                    const temp = document.createElement('textarea');
+                    temp.value = link;
+                    temp.style.position = 'fixed';
+                    temp.style.left = '-9999px';
+                    document.body.appendChild(temp);
+                    temp.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(temp);
+                  }
+                  setStoreLinkCopied(true);
+                  window.setTimeout(() => setStoreLinkCopied(false), 2500);
+                } catch {
+                  const field = document.querySelector<HTMLInputElement>('input[aria-label="لینک اختصاصی ویترین"]');
+                  field?.focus();
+                  field?.select();
+                  setManageError('کپی خودکار انجام نشد؛ لینک انتخاب شده است، آن را کپی کنید.');
+                }
               }}>{storeLinkCopied ? <Check className="ml-2 size-4" /> : <Copy className="ml-2 size-4" />}{storeLinkCopied ? 'کپی شد' : 'کپی لینک ویترین'}</Button>
             </div>
             {storeLinkCopied && <p role="status" className="mt-2 text-xs font-semibold text-emerald-800">لینک ویترین کپی شد؛ می‌توانید آن را برای مشتری بفرستید.</p>}
