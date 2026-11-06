@@ -8,5 +8,12 @@
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "terrabar-db",
+      "database_id": "9da7735b-e4c9-4f7f-9abe-53ba1545c60e"
+    }
   ]
 }

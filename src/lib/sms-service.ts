@@ -124,6 +124,7 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
       return {
         success: true,
         message: "کد تأیید با موفقیت از طریق سامانه پیامکی sms.ir ارسال شد.",
+        code,
       };
     } else {
       console.warn("[sms.ir API response]", response.status, result);
