@@ -34,7 +34,7 @@ This project was built with [Lovable](https://lovable.dev).
 
 **Live app**: https://market-bloom-groove.lovable.app
 
-## Build with Lovable
+## Build with Lovable.
 
 Continue developing this project in the [Lovable editor](https://lovable.dev/projects/d5752b3b-02e9-421e-a693-6ca8f435c030).
 
