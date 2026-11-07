@@ -74,14 +74,18 @@ export function useAuth() {
       console.warn("[useAuth] Failed to parse local session:", e);
     }
 
-    // 2. Validate with D1 server session
+    // 2. Validate with D1 server session with 6s timeout
     async function verifyWithServer() {
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timeoutId = controller ? window.setTimeout(() => controller.abort(), 6000) : null;
+
       try {
         const stored = localStorage.getItem("terrabar_d1_session");
         const token = stored ? (JSON.parse(stored) as AppSession)?.token : "";
 
         const res = await fetch("/api/auth/session", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: controller?.signal,
         });
         if (!res.ok) {
           if (active) setLoading(false);
@@ -99,6 +103,10 @@ export function useAuth() {
             };
             localStorage.setItem("terrabar_d1_session", JSON.stringify(updatedSession));
             applySession(updatedSession);
+          } else if (!data?.session && token) {
+            // Server has no record of this session
+            localStorage.removeItem("terrabar_d1_session");
+            applySession(null);
           } else if (!stored) {
             applySession(null);
           }
@@ -106,22 +114,36 @@ export function useAuth() {
       } catch (err) {
         console.warn("[useAuth] Server session validation skipped:", err);
       } finally {
+        if (timeoutId) window.clearTimeout(timeoutId);
         if (active) setLoading(false);
       }
     }
 
     void verifyWithServer();
 
-    // 3. Listen to auth changes
+    // 3. Listen to auth changes in current tab and across other open tabs
     function onAuthChange(e: Event) {
       const custom = e as CustomEvent<AppSession | null>;
       applySession(custom.detail ?? null);
     }
 
+    function onStorageEvent(e: StorageEvent) {
+      if (e.key === "terrabar_d1_session") {
+        try {
+          const sess = e.newValue ? (JSON.parse(e.newValue) as AppSession) : null;
+          applySession(sess);
+        } catch {
+          applySession(null);
+        }
+      }
+    }
+
     window.addEventListener("terrabar-auth-change", onAuthChange);
+    window.addEventListener("storage", onStorageEvent);
     return () => {
       active = false;
       window.removeEventListener("terrabar-auth-change", onAuthChange);
+      window.removeEventListener("storage", onStorageEvent);
     };
   }, []);
 

@@ -290,6 +290,17 @@ export const POLYFILL_INLINE_SCRIPT = `
         }
       }
     }
+
+    // 18. Ensure no stale service workers or caches lock subsequent page loads
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          for (var i = 0; i < regs.length; i++) {
+            regs[i].unregister();
+          }
+        }).catch(function() {});
+      } catch(e) {}
+    }
   } catch(e) {
     if (typeof console !== 'undefined' && console.warn) {
       console.warn('Browser polyfills initialization notice:', e);

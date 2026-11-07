@@ -1,6 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
+
+let cachedDbSync: any = null;
+function getDatabaseSync() {
+  if (cachedDbSync !== null) return cachedDbSync;
+  try {
+    // Dynamic import to prevent crash in Cloudflare Workers environment
+    if (typeof process !== "undefined" && process.versions?.node) {
+      const sqliteMod = eval('require("node:sqlite")');
+      cachedDbSync = sqliteMod?.DatabaseSync || false;
+      return cachedDbSync;
+    }
+  } catch {
+    cachedDbSync = false;
+  }
+  return false;
+}
 
 /**
  * Cloudflare D1 Database Layer
@@ -30,18 +45,23 @@ let cloudflareD1Binding: D1Database | null = null;
 export function setCloudflareD1Binding(db: any) {
   if (db && typeof db.prepare === "function") {
     cloudflareD1Binding = db;
+    // Auto-run schema initialization against real D1 binding
+    void initD1Schema();
   }
 }
 
-// In Node.js dev mode, use node:sqlite
+// In Node.js dev mode, use node:sqlite or in-memory fallback
 const globalForD1 = globalThis as unknown as { __terrabar_d1_local__?: D1Database };
 
 function getLocalSqlite(): D1Database {
   if (globalForD1.__terrabar_d1_local__) return globalForD1.__terrabar_d1_local__;
 
   try {
+    const DbSync = getDatabaseSync();
+    if (!DbSync) throw new Error("node:sqlite is not available");
+
     const dbPath = path.resolve(process.cwd(), ".d1-local.sqlite");
-    const rawDb = new DatabaseSync(dbPath);
+    const rawDb = new DbSync(dbPath);
 
     const instance: D1Database = {
       prepare(sql: string) {
@@ -290,10 +310,18 @@ export async function initD1Schema(): Promise<void> {
     );
   `;
 
-  try {
-    await db.exec(schemaSql);
-  } catch (e) {
-    console.error("[Database] Schema init warning:", e);
+  // Execute statements individually to ensure Cloudflare D1 compatibility
+  const statements = schemaSql
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  for (const stmt of statements) {
+    try {
+      await db.exec(stmt + ";");
+    } catch {
+      // Table may already exist or statement succeeded partially
+    }
   }
 
   try {

@@ -93,6 +93,7 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showOtherAccount, setShowOtherAccount] = useState(false);
 
   async function sendCode(event: FormEvent) {
     event.preventDefault();
@@ -316,7 +317,7 @@ function AuthPage() {
     }
   }
 
-  if (user && !codeSent && !busy && !error) {
+  if (user && !showOtherAccount && !codeSent && !busy && !error) {
     return (
       <section className="bg-market-surface py-16">
         <div className="site-container max-w-md text-center">
@@ -326,26 +327,31 @@ function AuthPage() {
             شما با {user.phone ? `شماره ${user.phone}` : user.email ? `ایمیل ${user.email}` : "حساب کاربری خود"} وارد شده‌اید.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            {isAdmin ? (
-              <Button asChild>
-                <Link to="/admin">ورود به پنل مدیریت</Link>
-              </Button>
-            ) : (
-              <Button
-                onClick={async () => {
-                  await signOut();
-                  await navigate({ to: "/auth" });
-                }}
-              >
-                خروج / تغییر حساب
-              </Button>
-            )}
-            <Button asChild variant="outline">
-              <Link to="/membership">درخواست عضویت و پیگیری وضعیت</Link>
-            </Button>
-            <Button asChild variant="outline">
+            <Button asChild>
               <Link to="/member-home">ورود به صفحه اصلی کاربران</Link>
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowOtherAccount(true);
+              }}
+            >
+              ورود با شماره یا حساب دیگر
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                await signOut();
+                setShowOtherAccount(true);
+              }}
+            >
+              خروج از حساب
+            </Button>
+            {isAdmin && (
+              <Button asChild variant="secondary">
+                <Link to="/admin">ورود به پنل مدیریت</Link>
+              </Button>
+            )}
           </div>
         </div>
       </section>

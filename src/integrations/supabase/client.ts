@@ -133,21 +133,24 @@ function createD1QueryBuilder(tableName: string) {
       let resultData: any[] = [];
 
       if (tableName === "members") {
-        if (sess?.member) {
-          resultData = [sess.member];
-        } else if (sess?.user) {
-          resultData = [
-            {
-              id: `mem_${sess.user.id}`,
-              auth_user_id: sess.user.id,
-              full_name: sess.user.full_name || "کاربر ترابار",
-              phone: sess.user.phone || "",
-              city: sess.user.city || "",
-              province: sess.user.province || "",
-              role: sess.user.role || "buyer",
-            },
-          ];
-        }
+        const storedMembers = getStoredTableRows("members");
+        const activeMember = sess?.member
+          ? {
+              ...sess.member,
+              auth_user_id: sess.member.auth_user_id || sess.user?.id || sess.member.id,
+            }
+          : sess?.user
+            ? {
+                id: `mem_${sess.user.id}`,
+                auth_user_id: sess.user.id,
+                full_name: sess.user.full_name || "کاربر ترابار",
+                phone: sess.user.phone || "",
+                city: sess.user.city || "",
+                province: sess.user.province || "",
+                role: sess.user.role || "buyer",
+              }
+            : null;
+        resultData = activeMember ? [activeMember, ...storedMembers.filter((m) => m.id !== activeMember.id)] : storedMembers;
       } else if (tableName === "member_roles") {
         if (sess?.roles) {
           resultData = sess.roles.map((r: string, idx: number) => ({

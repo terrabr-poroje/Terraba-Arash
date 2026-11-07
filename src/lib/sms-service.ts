@@ -73,16 +73,7 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
     return { success: false, message: "شماره موبایل وارد شده معتبر نیست. لطفاً یک شماره ۱۱ رقمی (مثال: ۰۹۱۲۳۴۵۶۷۸۹) وارد کنید." };
   }
 
-  // Rate limiting: allow resend only after 60 seconds
-  const existing = otpStore.get(mobile);
-  const now = Date.now();
-  if (existing && existing.expiresAt - now > 120000) { // Sent less than 60s ago (180s total ttl)
-    const waitSec = Math.ceil((existing.expiresAt - 120000 - now) / 1000);
-    if (waitSec > 0) {
-      return { success: false, message: `لطفاً ${waitSec} ثانیه دیگر جهت درخواست مجدد کد شکیبا باشید.` };
-    }
-  }
-
+  // Unlimited attempts allowed per user request (no cooldown restrictions)
   const code = generateOtpCode();
 
   try {
@@ -117,7 +108,7 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
       // Store code for 3 minutes (180,000 ms)
       otpStore.set(mobile, {
         code,
-        expiresAt: now + 180000,
+        expiresAt: now + 600000, // 10 minutes
         attempts: 0,
       });
 
@@ -137,7 +128,7 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
           // Store code so testing/login is unblocked while sms.ir approves the template
           otpStore.set(mobile, {
             code,
-            expiresAt: now + 180000,
+            expiresAt: now + 600000, // 10 minutes
             attempts: 0,
           });
 
@@ -179,10 +170,6 @@ export function verifyOtpCode(rawMobile: string, inputCode: string): { success: 
   }
 
   stored.attempts += 1;
-  if (stored.attempts > 5) {
-    otpStore.delete(mobile);
-    return { success: false, message: "تعداد تلاش‌های ناموفق بیش از حد مجاز است. لطفاً کد جدید دریافت کنید." };
-  }
 
   if (stored.code !== cleanCode) {
     return { success: false, message: "کد تأیید وارد شده صحیح نیست. لطفاً دوباره بررسی کنید." };

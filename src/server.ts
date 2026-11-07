@@ -75,12 +75,18 @@ export default {
           const result = await sendOtpSms(body?.mobile || "");
           return new Response(JSON.stringify(result), {
             status: result.success ? 200 : 400,
-            headers: { "content-type": "application/json; charset=utf-8" },
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
           });
         } catch {
           return new Response(JSON.stringify({ success: false, message: "خطای سرور در ارسال پیامک" }), {
             status: 500,
-            headers: { "content-type": "application/json; charset=utf-8" },
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
           });
         }
       }
@@ -225,12 +231,18 @@ export default {
           const session = await validateD1Session(token);
           return new Response(JSON.stringify({ session }), {
             status: 200,
-            headers: { "content-type": "application/json; charset=utf-8" },
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
           });
         } catch {
           return new Response(JSON.stringify({ session: null }), {
             status: 200,
-            headers: { "content-type": "application/json; charset=utf-8" },
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
           });
         }
       }

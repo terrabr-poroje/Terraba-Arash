@@ -20,6 +20,7 @@ function smsDevApiPlugin(): Plugin {
               };
               const result = await sendOtpSms(mobile);
               res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
               res.statusCode = result.success ? 200 : 400;
               res.end(JSON.stringify(result));
             } catch (err) {
@@ -64,6 +65,7 @@ function smsDevApiPlugin(): Plugin {
               });
 
               res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
               res.setHeader("Set-Cookie", `tb_session=${authResult.sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`);
               res.statusCode = 200;
               res.end(
@@ -158,11 +160,13 @@ function smsDevApiPlugin(): Plugin {
             };
             const session = await validateD1Session(token);
             res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
             res.statusCode = 200;
             res.end(JSON.stringify({ session }));
           } catch (err) {
             console.error("[dev /api/auth/session error]", err);
             res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
             res.statusCode = 200;
             res.end(JSON.stringify({ session: null }));
           }
