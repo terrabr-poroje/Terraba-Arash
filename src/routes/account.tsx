@@ -73,7 +73,7 @@ function AccountPage() {
         setLoads((loadResult.data ?? []) as Load[]);
         setOrders((orderResult.data ?? []) as Order[]);
         const errors = [roleResult.error, loadResult.error, orderResult.error].filter(Boolean);
-        if (errors.length) setError("بخشی از سوابق به‌دلیل محدودیت دسترسی دیتابیس بارگذاری نشد؛ اطلاعاتی که نمایش داده می‌شود از داده‌های قابل‌دسترسی است.");
+        if (errors.length) setError("بخشی از سوابق به‌طور موقت در دسترس نیست؛ اطلاعات بارگذاری‌شده از سوابق موجود نمایش داده می‌شود.");
       } catch (e) {
         console.error("[Terrabar account] load failed", e);
         if (active) setError("اطلاعات حساب دریافت نشد. دوباره صفحه را بارگذاری کنید.");

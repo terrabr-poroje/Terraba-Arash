@@ -119,8 +119,9 @@ export async function initD1Schema(): Promise<void> {
   const schemaSql = `
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
-      phone TEXT UNIQUE,
+      phone TEXT,
       email TEXT,
+      password_hash TEXT,
       full_name TEXT,
       role TEXT DEFAULT 'buyer',
       city TEXT,
@@ -168,27 +169,115 @@ export async function initD1Schema(): Promise<void> {
       user_id TEXT,
       token TEXT UNIQUE,
       phone TEXT,
+      email TEXT,
       expires_at INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS loads (
+      id TEXT PRIMARY KEY,
+      member_id TEXT,
+      owner_member_id TEXT,
+      name TEXT,
+      product_type TEXT,
+      category TEXT,
+      engine TEXT,
+      city TEXT,
+      origin TEXT,
+      source_region TEXT,
+      source_market TEXT,
+      quality TEXT,
+      quantity REAL,
+      count INTEGER,
+      price REAL,
+      price_unit TEXT DEFAULT 'تومان',
+      sale_type TEXT,
+      status TEXT DEFAULT 'active',
+      package_type TEXT,
+      package_weight REAL,
+      min_quantity REAL,
+      min_order_quantity REAL,
+      ready_date TEXT,
+      description TEXT,
+      seller_type TEXT,
+      role TEXT,
+      unit TEXT DEFAULT 'کیلوگرم',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS load_price_tiers (
+      id TEXT PRIMARY KEY,
+      load_id TEXT,
+      sale_type TEXT,
+      unit_price REAL,
+      minimum_packages INTEGER,
+      min_quantity REAL,
+      max_quantity REAL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS load_images (
+      id TEXT PRIMARY KEY,
+      load_id TEXT,
+      storage_path TEXT,
+      display_order INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
       invoice_number TEXT,
+      load_id TEXT,
       buyer_member_id TEXT,
       seller_member_id TEXT,
+      customer_name TEXT,
+      customer_phone TEXT,
+      customer_city TEXT,
+      quantity REAL,
+      unit TEXT DEFAULT 'کیلوگرم',
+      price REAL,
       total_price REAL,
+      delivery_address TEXT,
+      delivery_type TEXT,
       status TEXT DEFAULT 'pending',
       payment_status TEXT DEFAULT 'pending',
       delivery_status TEXT DEFAULT 'pending',
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS purchase_requests (
       id TEXT PRIMARY KEY,
       member_id TEXT,
+      load_id TEXT,
+      product_name TEXT,
+      quantity REAL,
+      max_price REAL,
+      city TEXT,
       details TEXT,
       status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS ratings (
+      id TEXT PRIMARY KEY,
+      rater_member_id TEXT,
+      rated_member_id TEXT,
+      load_id TEXT,
+      order_id TEXT,
+      score INTEGER,
+      review_text TEXT,
+      status TEXT DEFAULT 'approved',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS rating_messages (
+      id TEXT PRIMARY KEY,
+      rating_id TEXT,
+      sender_user_id TEXT,
+      message TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -204,7 +293,19 @@ export async function initD1Schema(): Promise<void> {
   try {
     await db.exec(schemaSql);
   } catch (e) {
-    console.error("[D1 Database] Schema init warning:", e);
+    console.error("[Database] Schema init warning:", e);
+  }
+
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT;");
+  } catch {
+    // Column might already exist
+  }
+
+  try {
+    await db.exec("ALTER TABLE sessions ADD COLUMN email TEXT;");
+  } catch {
+    // Column might already exist
   }
 }
 
@@ -469,10 +570,202 @@ export async function validateD1Session(sessionToken: string): Promise<UserAuthR
 }
 
 /**
- * Invalidates a session token in D1
+ * Invalidates a session token
  */
 export async function invalidateD1Session(sessionToken: string): Promise<void> {
   if (!sessionToken) return;
   const db = getD1();
   await db.prepare("DELETE FROM sessions WHERE token = ?").bind(sessionToken).run();
+}
+
+export interface EmailAuthPayload {
+  email: string;
+  password?: string;
+  fullName?: string;
+  phone?: string;
+  city?: string;
+  province?: string;
+  role?: string;
+  activity?: string;
+  mode?: "login" | "signup";
+}
+
+/**
+ * Registers or logs in a user using email address
+ */
+export async function registerOrLoginUserWithEmail(
+  payload: EmailAuthPayload,
+): Promise<UserAuthResult> {
+  await initD1Schema();
+  const db = getD1();
+
+  const email = payload.email.trim().toLowerCase();
+  const rawPassword = payload.password?.trim() || "";
+  const passwordHash = rawPassword ? Buffer.from(rawPassword).toString("base64") : "";
+  const fullName = payload.fullName?.trim() || email.split("@")[0] || "کاربر ترابار";
+  const phone = payload.phone?.trim() || "";
+  const city = payload.city?.trim() || "";
+  const province = payload.province?.trim() || "";
+  const role = payload.role?.trim() || "buyer";
+  const activity = payload.activity?.trim() || "";
+  const mode = payload.mode || "login";
+
+  // Check if user exists with this email
+  const existingUser = await db
+    .prepare("SELECT * FROM users WHERE LOWER(email) = ? LIMIT 1")
+    .bind(email)
+    .first<any>();
+
+  let userId: string;
+  let userFullName: string;
+  let userCity: string;
+  let userProvince: string;
+  let userRole: string;
+  let userPhone: string;
+
+  if (existingUser) {
+    if (mode === "login" && existingUser.password_hash && passwordHash) {
+      if (existingUser.password_hash !== passwordHash) {
+        throw new Error("رمز عبور وارد شده نادرست است.");
+      }
+    }
+
+    userId = existingUser.id;
+    userFullName = fullName !== email.split("@")[0] ? fullName : existingUser.full_name;
+    userCity = city || existingUser.city;
+    userProvince = province || existingUser.province;
+    userRole = role || existingUser.role;
+    userPhone = phone || existingUser.phone || "";
+
+    const updatedHash = passwordHash || existingUser.password_hash || "";
+    await db
+      .prepare(
+        "UPDATE users SET full_name = ?, city = ?, province = ?, role = ?, activity = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      )
+      .bind(userFullName, userCity, userProvince, userRole, activity, updatedHash, userId)
+      .run();
+  } else {
+    if (mode === "login" && !rawPassword) {
+      throw new Error("کاربری با این نشانی ایمیل پیدا نشد. لطفاً ابتدا ثبت‌نام فرمایید.");
+    }
+
+    const emailPrefix = email.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
+    userId = `usr_${Date.now()}_${emailPrefix}`;
+    userFullName = fullName;
+    userCity = city;
+    userProvince = province;
+    userRole = role;
+    userPhone = phone;
+
+    await db
+      .prepare(
+        `INSERT INTO users (id, phone, email, password_hash, full_name, role, city, province, activity, is_verified, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      )
+      .bind(
+        userId,
+        userPhone,
+        email,
+        passwordHash,
+        userFullName,
+        userRole,
+        userCity,
+        userProvince,
+        activity,
+      )
+      .run();
+  }
+
+  // Ensure member record
+  const existingMember = await db
+    .prepare("SELECT * FROM members WHERE auth_user_id = ? OR LOWER(email) = ? LIMIT 1")
+    .bind(userId, email)
+    .first<any>();
+
+  let memberId: string;
+  if (existingMember) {
+    memberId = existingMember.id;
+    await db
+      .prepare(
+        "UPDATE members SET full_name = ?, city = ?, province = ?, role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      )
+      .bind(userFullName, userCity, userProvince, userRole, memberId)
+      .run();
+  } else {
+    memberId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    await db
+      .prepare(
+        `INSERT INTO members (id, auth_user_id, full_name, phone, email, city, province, role, verification_status, products, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      )
+      .bind(
+        memberId,
+        userId,
+        userFullName,
+        userPhone,
+        email,
+        userCity,
+        userProvince,
+        userRole,
+        activity,
+      )
+      .run();
+  }
+
+  // Assign roles
+  const assignedRoles: string[] = ["buyer"];
+  if (userRole === "seller" || userRole === "bar_seller") {
+    assignedRoles.push("seller");
+    const roleId = `role_${Date.now()}_seller`;
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO member_roles (id, member_id, role_code, approval_status, created_at) VALUES (?, ?, 'seller', 'approved', CURRENT_TIMESTAMP)",
+      )
+      .bind(roleId, memberId)
+      .run();
+  } else if (userRole === "supplier") {
+    assignedRoles.push("supplier");
+    const roleId = `role_${Date.now()}_supplier`;
+    await db
+      .prepare(
+        "INSERT OR IGNORE INTO member_roles (id, member_id, role_code, approval_status, created_at) VALUES (?, ?, 'supplier', 'approved', CURRENT_TIMESTAMP)",
+      )
+      .bind(roleId, memberId)
+      .run();
+  }
+
+  // Create active session
+  const sessionToken = `tbsess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+  const sessionId = `sess_${Date.now()}_email`;
+
+  await db
+    .prepare(
+      "INSERT INTO sessions (id, user_id, token, phone, email, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+    )
+    .bind(sessionId, userId, sessionToken, userPhone, email, expiresAt)
+    .run();
+
+  return {
+    user: {
+      id: userId,
+      phone: userPhone,
+      full_name: userFullName,
+      role: userRole,
+      city: userCity,
+      province: userProvince,
+      email,
+    },
+    member: {
+      id: memberId,
+      auth_user_id: userId,
+      full_name: userFullName,
+      phone: userPhone,
+      role: userRole,
+      city: userCity,
+      province: userProvince,
+    },
+    roles: assignedRoles,
+    sessionToken,
+  };
 }

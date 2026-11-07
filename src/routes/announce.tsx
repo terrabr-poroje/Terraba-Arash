@@ -143,7 +143,7 @@ function AnnouncePage() {
       if (!active) return;
       if (listError) setManageError('فهرست بارهای شما دریافت نشد؛ دسترسی مشاهده را بررسی کنید.');
       else setOwnedLoads((data ?? []) as OwnedLoad[]);
-      if (orderListError) setManageError('فهرست درخواست‌های سفارش دریافت نشد؛ ممکن است سیاست‌های سفارش هنوز روی دیتابیس اعمال نشده باشند.');
+      if (orderListError) setManageError('فهرست درخواست‌های سفارش در دسترس نیست؛ لطفاً دوباره تلاش کنید.');
       else setIncomingOrders((orderData ?? []) as IncomingOrder[]);
       setLoadingOwnedLoads(false);
       setLoadingIncomingOrders(false);
@@ -238,7 +238,7 @@ function AnnouncePage() {
       description: editValues.description.trim() || null,
     }).eq('id', editingLoad.id);
     if (updateError) {
-      setManageError('ذخیره ویرایش بار انجام نشد؛ ممکن است ستون یا سیاست دسترسی دیتابیس نیاز به بررسی داشته باشد.');
+      setManageError('ذخیره ویرایش بار انجام نشد؛ لطفاً دوباره تلاش کنید.');
       setBusyLoadId('');
       return;
     }
@@ -332,7 +332,7 @@ function AnnouncePage() {
       .update({ status: 'inactive' })
       .eq('id', loadId)
       .in('status', ['active', 'pending']);
-    if (updateError) setManageError('غیرفعال‌کردن بار انجام نشد؛ سیاست دسترسی دیتابیس باید در محیط آزمایشی اعمال و بررسی شود.');
+    if (updateError) setManageError('غیرفعال‌کردن بار انجام نشد؛ لطفاً دوباره تلاش کنید.');
     else setOwnedLoads(items => items.map(item => item.id === loadId ? { ...item, status: 'inactive' } : item));
     setBusyLoadId('');
   }
@@ -435,7 +435,7 @@ function AnnouncePage() {
       source_region: originCity,
     }).select('id').single();
     if (insertError || !insertedLoad) {
-      setError('ثبت بار انجام نشد؛ اطلاعات یا دسترسی دیتابیس را بررسی کنید.');
+      setError('ثبت بار انجام نشد؛ لطفاً ورودی‌ها را بررسی و دوباره تلاش کنید.');
     } else {
       const priceRows = roleValidSaleSections.map(key => ({
         load_id: insertedLoad.id,

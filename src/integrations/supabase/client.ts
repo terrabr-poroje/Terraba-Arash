@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Cloudflare D1 Database Adapter
- * Replaces Supabase connections with Cloudflare D1 (Database ID: 9da7735b-e4c9-4f7f-9abe-53ba1545c60e)
+ * Terrabar Application Database Client Adapter
  */
 
 function getStoredD1Session(): any {
@@ -14,12 +13,34 @@ function getStoredD1Session(): any {
   }
 }
 
-// Chainable query builder for Cloudflare D1 compatibility
+function getStoredTableRows(tableName: string): any[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(`tb_tbl_${tableName}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredTableRows(tableName: string, rows: any[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(`tb_tbl_${tableName}`, JSON.stringify(rows));
+  } catch {
+    // Storage access may be restricted in private browsing
+  }
+}
+
+// Chainable query builder for application database operations
 function createD1QueryBuilder(tableName: string) {
   let selectFields = "*";
   const filters: Array<{ field: string; op: string; value: any }> = [];
   let isSingle = false;
   let isMaybeSingle = false;
+  let orderByCol = "";
+  let orderAscending = false;
+  let limitCount: number | null = null;
 
   const builder: any = {
     select(fields = "*") {
@@ -35,17 +56,19 @@ function createD1QueryBuilder(tableName: string) {
       return builder;
     },
     in(field: string, values: any[]) {
-      filters.push({ field, op: "IN", value: values });
+      filters.push({ field, op: "IN", value: Array.isArray(values) ? values : [values] });
       return builder;
     },
-    or(filterExpr: string) {
-      // ignore or mock
+    or(_filterExpr: string) {
       return builder;
     },
-    order(_col: string, _opts?: any) {
+    order(col: string, opts?: { ascending?: boolean }) {
+      orderByCol = col;
+      orderAscending = opts?.ascending ?? true;
       return builder;
     },
-    limit(_count: number) {
+    limit(count: number) {
+      limitCount = count;
       return builder;
     },
     single() {
@@ -57,24 +80,57 @@ function createD1QueryBuilder(tableName: string) {
       return builder.then();
     },
     async insert(rows: any | any[]) {
-      const sess = getStoredD1Session();
       const rowList = Array.isArray(rows) ? rows : [rows];
       const inserted = rowList.map((r, i) => ({
-        id: r.id || `row_${Date.now()}_${i}`,
-        ...r,
+        id: r.id || `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${i}`,
         created_at: new Date().toISOString(),
+        ...r,
       }));
-      return { data: isSingle ? inserted[0] : inserted, error: null };
+
+      const existing = getStoredTableRows(tableName);
+      saveStoredTableRows(tableName, [...inserted, ...existing]);
+
+      const result = isSingle ? inserted[0] : inserted;
+      return {
+        data: result,
+        error: null,
+        select: () => ({
+          single: async () => ({ data: inserted[0], error: null }),
+          maybeSingle: async () => ({ data: inserted[0] || null, error: null }),
+        }),
+      };
     },
     async update(values: any) {
+      const existing = getStoredTableRows(tableName);
+      const updated = existing.map((row) => {
+        let matches = true;
+        for (const f of filters) {
+          if (f.op === "=" && row[f.field] !== f.value) matches = false;
+          if (f.op === "!=" && row[f.field] === f.value) matches = false;
+          if (f.op === "IN" && Array.isArray(f.value) && !f.value.includes(row[f.field])) matches = false;
+        }
+        return matches ? { ...row, ...values, updated_at: new Date().toISOString() } : row;
+      });
+      saveStoredTableRows(tableName, updated);
       return { data: values, error: null };
     },
     async delete() {
+      const existing = getStoredTableRows(tableName);
+      const remaining = existing.filter((row) => {
+        let matches = true;
+        for (const f of filters) {
+          if (f.op === "=" && row[f.field] !== f.value) matches = false;
+          if (f.op === "!=" && row[f.field] === f.value) matches = false;
+          if (f.op === "IN" && Array.isArray(f.value) && !f.value.includes(row[f.field])) matches = false;
+        }
+        return !matches;
+      });
+      saveStoredTableRows(tableName, remaining);
       return { data: null, error: null };
     },
     async then(resolve?: (val: any) => any, _reject?: any) {
       const sess = getStoredD1Session();
-      let resultData: any = [];
+      let resultData: any[] = [];
 
       if (tableName === "members") {
         if (sess?.member) {
@@ -104,13 +160,38 @@ function createD1QueryBuilder(tableName: string) {
         if (sess?.roles?.includes("admin")) {
           resultData = [{ id: "adm_1", admin_role: "main_admin", is_active: true }];
         }
+      } else {
+        resultData = getStoredTableRows(tableName);
       }
 
-      let finalResult = resultData;
-      if (isSingle) {
-        finalResult = resultData[0] || null;
-      } else if (isMaybeSingle) {
-        finalResult = resultData[0] || null;
+      // Apply filters
+      let filtered = resultData.filter((row) => {
+        for (const f of filters) {
+          if (f.op === "=" && String(row[f.field]) !== String(f.value)) return false;
+          if (f.op === "!=" && String(row[f.field]) === String(f.value)) return false;
+          if (f.op === "IN" && Array.isArray(f.value) && !f.value.map(String).includes(String(row[f.field]))) return false;
+        }
+        return true;
+      });
+
+      // Order
+      if (orderByCol) {
+        filtered.sort((a, b) => {
+          const valA = a[orderByCol] ?? "";
+          const valB = b[orderByCol] ?? "";
+          if (valA < valB) return orderAscending ? -1 : 1;
+          if (valA > valB) return orderAscending ? 1 : -1;
+          return 0;
+        });
+      }
+
+      if (limitCount !== null && limitCount > 0) {
+        filtered = filtered.slice(0, limitCount);
+      }
+
+      let finalResult = filtered;
+      if (isSingle || isMaybeSingle) {
+        finalResult = filtered[0] || null;
       }
 
       const res = { data: finalResult, error: null };

@@ -147,7 +147,7 @@ function AdminPage() {
     if (!message || !user) return;
     setRatingReplyBusy(true);
     const { error } = await (supabase as any).from('rating_messages').insert({ rating_id: ratingId, sender_user_id: user.id, message });
-    if (error) window.alert('ارسال پاسخ انجام نشد. دسترسی مدیر و اتصال دیتابیس را بررسی کنید.');
+    if (error) window.alert('ارسال پاسخ انجام نشد. لطفاً دوباره تلاش نمایید.');
     else { setRatingReplies(current => ({ ...current, [ratingId]: '' })); refresh(); }
     setRatingReplyBusy(false);
   }

@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { CheckCircle2, Clock3, Phone, ShieldCheck, Sprout, Store, UserRound } from "lucide-react";
+import { CheckCircle2, Clock3, Lock, Mail, Phone, ShieldCheck, Sprout, Store, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuth, signOut } from "@/lib/auth";
+import { useAuth, signOut, type AppUser, type AppMember } from "@/lib/auth";
 import { pageHead, provinces, provinceCities } from "@/lib/marketplace";
 import { CityPicker } from "@/components/city-picker";
 import { requestSmsOtp, submitVerifySmsOtp } from "@/lib/sms-client";
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/auth")({
   head: () =>
     pageHead(
       "ورود و ثبت‌نام",
-      "ثبت‌نام و ورود با شماره موبایل در ترابار؛ ذخیره‌سازی ابری در کلودفلر D1 و ارسال پیامک سریع.",
+      "ثبت‌نام و ورود سریع در ترابار؛ ارتباط مستقیم باغداران، تأمین‌کنندگان، بارفروشان و خریداران میوه و تره‌بار.",
     ),
   component: AuthPage,
 });
@@ -69,8 +69,11 @@ function AuthPage() {
 
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const [authMethod, setAuthMethod] = useState<"phone" | "email">("phone");
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [fullName, setFullName] = useState("");
   const [province, setProvince] = useState("البرز");
@@ -153,14 +156,13 @@ function AuthPage() {
       setBusy(true);
       networkWatchdog = window.setTimeout(() => {
         setBusy(false);
-        setError("ارتباط با دیتابیس طولانی شد. لطفاً دوباره تلاش کنید.");
+        setError("ارتباط با سرور طولانی شد. لطفاً دوباره تلاش کنید.");
       }, 15000);
 
       setError("");
       setNotice("");
       const normalizedPhone = normalizeIranPhone(phone);
 
-      // Verify OTP and automatically register / login into Cloudflare D1
       const verifyRes = await submitVerifySmsOtp({
         mobile: normalizedPhone,
         code: code.trim(),
@@ -178,7 +180,7 @@ function AuthPage() {
         return;
       }
 
-      setNotice("ورود با موفقیت انجام شد و اطلاعات در دیتابیس کلودفلر D1 ذخیره گردید. در حال انتقال به سایت…");
+      setNotice("ورود با موفقیت انجام شد. در حال انتقال به سایت…");
       setBusy(false);
 
       const requestedNext =
@@ -196,9 +198,120 @@ function AuthPage() {
       }, 700);
     } catch (err) {
       console.error("[Terrabar auth] verifyCode failed:", err);
-      setError("خطا در ارتباط با سرور و دیتابیس. لطفاً دوباره تلاش کنید.");
+      setError("خطا در برقراری ارتباط با سرور. لطفاً دوباره تلاش کنید.");
     } finally {
       if (networkWatchdog) window.clearTimeout(networkWatchdog);
+      setBusy(false);
+    }
+  }
+
+  async function handleEmailAuth(event: FormEvent) {
+    event.preventDefault();
+    try {
+      setBusy(true);
+      setError("");
+      setNotice("");
+
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail || !trimmedEmail.includes("@")) {
+        setError("نشانی ایمیل معتبر نیست؛ نمونه: example@domain.com");
+        setBusy(false);
+        return;
+      }
+
+      if (!password || password.length < 6) {
+        setError("رمز عبور باید حداقل ۶ نویسه (کاراکتر) باشد.");
+        setBusy(false);
+        return;
+      }
+
+      if (mode === "signup" && (!province.trim() || !city.trim())) {
+        setError("استان و شهر محل فعالیت را انتخاب کنید.");
+        setBusy(false);
+        return;
+      }
+
+      if (mode === "signup" && !acceptedTerms) {
+        setError("برای ادامه، پذیرش قوانین ترابار الزامی است.");
+        setBusy(false);
+        return;
+      }
+
+      if (mode === "signup" && role !== "buyer" && !activity.trim()) {
+        setError("برای نقش حرفه‌ای، نوع فعالیت یا محصولات را وارد کنید.");
+        setBusy(false);
+        return;
+      }
+
+      const res = await fetch("/api/auth/email-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password,
+          fullName: fullName.trim() || undefined,
+          phone: phone.trim() ? normalizeIranPhone(phone) : undefined,
+          city,
+          province,
+          role: role === "bar_seller" ? "seller" : role,
+          activity: activity.trim(),
+          mode,
+        }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+        user?: AppUser;
+        member?: AppMember;
+        roles?: string[];
+        sessionToken?: string;
+      };
+
+      if (!res.ok || !data.success) {
+        setError(data.message || "خطا در احراز هویت با ایمیل.");
+        setBusy(false);
+        return;
+      }
+
+      if (data.sessionToken && data.user) {
+        localStorage.setItem(
+          "terrabar_d1_session",
+          JSON.stringify({
+            token: data.sessionToken,
+            user: data.user,
+            member: data.member,
+            roles: data.roles,
+          }),
+        );
+
+        window.dispatchEvent(
+          new CustomEvent("terrabar-auth-change", {
+            detail: { token: data.sessionToken, user: data.user },
+          }),
+        );
+      }
+
+      setNotice("ورود با موفقیت انجام شد. در حال انتقال به سایت…");
+      setBusy(false);
+
+      const requestedNext =
+        new URLSearchParams(window.location.search).get("next") || sessionStorage.getItem("terrabar:after-auth");
+      const safeNext =
+        requestedNext === "/requests" || (requestedNext ? /^\/store\/[a-zA-Z0-9-]+$/.test(requestedNext) : false)
+          ? requestedNext
+          : null;
+
+      if (safeNext) sessionStorage.removeItem("terrabar:after-auth");
+
+      window.setTimeout(() => {
+        if (safeNext) window.location.assign(safeNext);
+        else void navigate({ to: "/member-home" });
+      }, 700);
+    } catch (err) {
+      console.error("[Terrabar auth] handleEmailAuth failed:", err);
+      setError("خطا در برقراری ارتباط با سرور. لطفاً دوباره تلاش کنید.");
+    } finally {
       setBusy(false);
     }
   }
@@ -210,7 +323,7 @@ function AuthPage() {
           <CheckCircle2 className="mx-auto mb-4 size-12 text-primary" />
           <h1 className="text-2xl font-extrabold">به ترابار خوش آمدید</h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            شما با شماره {user.phone || "کاربری"} وارد شده‌اید.
+            شما با {user.phone ? `شماره ${user.phone}` : user.email ? `ایمیل ${user.email}` : "حساب کاربری خود"} وارد شده‌اید.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             {isAdmin ? (
@@ -245,7 +358,7 @@ function AuthPage() {
         <div className="rounded-xl border border-border bg-card p-5 sm:p-8">
           <div className="flex items-center gap-3">
             <div className="grid size-12 place-items-center rounded-xl bg-accent text-primary">
-              <Phone className="size-6" />
+              {authMethod === "email" ? <Mail className="size-6" /> : <Phone className="size-6" />}
             </div>
             <div>
               <h1 className="text-2xl font-extrabold">
@@ -257,14 +370,17 @@ function AuthPage() {
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 {roleTitle
-                  ? `ورود و ثبت‌نام اختصاصی ${roleTitle} با کد تأیید پیامکی sms.ir`
+                  ? `ورود و ثبت‌نام اختصاصی ${roleTitle}`
                   : mode === "login"
-                    ? "برای ورود، شماره موبایل خود را وارد کنید تا کد تأیید پیامک شود."
-                    : "ثبت‌نام سریع با شماره موبایل و ذخیره خودکار در دیتابیس کلودفلر D1"}
+                    ? authMethod === "email"
+                      ? "برای ورود، ایمیل و رمز عبور خود را وارد نمایید."
+                      : "برای ورود، شماره موبایل خود را وارد کنید تا کد تأیید پیامک شود."
+                    : "ثبت‌نام سریع و عضویت در سامانه بازار میوه و تره‌بار"}
               </p>
             </div>
           </div>
 
+          {/* Mode Switcher: Signup vs Login */}
           <div className="mt-6 grid grid-cols-2 rounded-lg bg-secondary p-1">
             <button
               type="button"
@@ -274,8 +390,8 @@ function AuthPage() {
                 setError("");
                 setNotice("");
               }}
-              className={`rounded-md px-3 py-2 text-sm font-semibold ${
-                mode === "signup" ? "bg-card shadow-sm" : "text-muted-foreground"
+              className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
+                mode === "signup" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
               }`}
             >
               ثبت‌نام جدید
@@ -288,15 +404,222 @@ function AuthPage() {
                 setError("");
                 setNotice("");
               }}
-              className={`rounded-md px-3 py-2 text-sm font-semibold ${
-                mode === "login" ? "bg-card shadow-sm" : "text-muted-foreground"
+              className={`rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
+                mode === "login" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
               }`}
             >
-              ورود با موبایل
+              ورود به حساب
             </button>
           </div>
 
-          {!codeSent ? (
+          {/* Method Switcher: Mobile SMS vs Email */}
+          <div className="mt-4 flex rounded-lg border border-border bg-muted/40 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMethod("phone");
+                setCodeSent(false);
+                setError("");
+                setNotice("");
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-bold transition-all ${
+                authMethod === "phone" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Phone className="size-3.5" />
+              ورود با شماره موبایل (پیامک)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMethod("email");
+                setCodeSent(false);
+                setError("");
+                setNotice("");
+              }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-bold transition-all ${
+                authMethod === "email" ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Mail className="size-3.5" />
+              ورود با ایمیل
+            </button>
+          </div>
+
+          {authMethod === "email" ? (
+            /* EMAIL AUTH FORM */
+            <form onSubmit={handleEmailAuth} className="mt-6 grid gap-4">
+              {mode === "signup" && (
+                <>
+                  <label className="field-label">
+                    نام و نام خانوادگی
+                    <input
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="field-input"
+                      placeholder="نام و نام خانوادگی شما"
+                      autoComplete="name"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="field-label">
+                      <label htmlFor="signup-province-email">استان محل فعالیت</label>
+                      <CityPicker
+                        value={province}
+                        onChange={(value) => {
+                          setProvince(value);
+                          setCity("");
+                        }}
+                        id="signup-province-email"
+                        options={provinces}
+                        placeholder="جست‌وجوی استان…"
+                      />
+                    </div>
+                    <div className="field-label">
+                      <label htmlFor="signup-city-email">شهر محل فعالیت</label>
+                      <CityPicker
+                        value={city}
+                        onChange={setCity}
+                        id="signup-city-email"
+                        options={provinceCities[province] ?? []}
+                        disabled={!province}
+                        placeholder={province ? "جست‌وجو و انتخاب شهر…" : "ابتدا استان را انتخاب کنید…"}
+                      />
+                    </div>
+                  </div>
+
+                  <label className="field-label">
+                    شماره همراه (اختیاری جهت هماهنگی بار)
+                    <input
+                      dir="ltr"
+                      inputMode="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="field-input text-left"
+                      placeholder="09123456789"
+                    />
+                  </label>
+
+                  {role !== "buyer" && (
+                    <label className="field-label">
+                      نوع فعالیت / محصولات
+                      <input
+                        required
+                        value={activity}
+                        onChange={(e) => setActivity(e.target.value)}
+                        className="field-input"
+                        placeholder={
+                          role === "supplier"
+                            ? "مثلاً باغدار مرکبات، کشاورز یا سورتینگ"
+                            : "مثلاً حجره و نوع محصولات قابل عرضه"
+                        }
+                      />
+                    </label>
+                  )}
+
+                  {!fixedRole && (
+                    <fieldset className="grid gap-3">
+                      <legend className="mb-1 text-sm font-bold">نقش خود را انتخاب کنید</legend>
+                      {roleOptions.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <label
+                            key={item.value}
+                            className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors ${
+                              role === item.value ? "border-primary bg-accent/50" : "border-border"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="main-role-email"
+                              value={item.value}
+                              checked={role === item.value}
+                              onChange={() => setRole(item.value)}
+                              className="mt-1 accent-primary"
+                            />
+                            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent text-primary">
+                              <Icon className="size-5" />
+                            </span>
+                            <span className="flex-1">
+                              <strong className="block text-sm">{item.title}</strong>
+                              <span className="mt-1 block text-xs leading-6 text-muted-foreground">
+                                {item.description}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </fieldset>
+                  )}
+                </>
+              )}
+
+              <label className="field-label">
+                نشانی ایمیل
+                <input
+                  required
+                  type="email"
+                  dir="ltr"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="field-input text-left"
+                  placeholder="name@example.com"
+                />
+              </label>
+
+              <label className="field-label">
+                رمز عبور
+                <input
+                  required
+                  type="password"
+                  dir="ltr"
+                  minLength={6}
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="field-input text-left"
+                  placeholder="حداقل ۶ نویسه"
+                />
+              </label>
+
+              {mode === "signup" && (
+                <label className="flex items-start gap-2 text-xs leading-6 text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-1 accent-primary"
+                  />
+                  <span>
+                    <Link to="/rules" className="text-primary underline">
+                      قوانین و مقررات ترابار
+                    </Link>{" "}
+                    را می‌پذیرم.
+                  </span>
+                </label>
+              )}
+
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              {notice && (
+                <p role="status" className="text-sm text-primary">
+                  {notice}
+                </p>
+              )}
+
+              <Button type="submit" disabled={busy}>
+                {busy ? "در حال پردازش…" : mode === "signup" ? "ثبت‌نام و ورود با ایمیل" : "ورود با ایمیل"}
+                <Lock className="mr-2 size-4" />
+              </Button>
+            </form>
+          ) : !codeSent ? (
+            /* PHONE AUTH: STEP 1 (ENTER PHONE) */
             <form onSubmit={sendCode} className="mt-6 grid gap-4">
               {mode === "signup" && (
                 <>
@@ -434,11 +757,12 @@ function AuthPage() {
               </Button>
             </form>
           ) : (
+            /* PHONE AUTH: STEP 2 (ENTER OTP CODE) */
             <form onSubmit={verifyCode} className="mt-6 grid gap-4">
               <div className="rounded-lg bg-accent/40 p-4 text-sm">
                 <p className="font-semibold">کد تأیید برای {phone} پیامک شد</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  کد ۶ رقمی دریافتی را وارد کنید تا ثبت‌نام در دیتابیس D1 تکمیل شده و خودکار وارد شوید.
+                  کد ۶ رقمی دریافتی را وارد کنید تا ورود شما تکمیل شود.
                 </p>
               </div>
               <label className="field-label">
@@ -456,7 +780,7 @@ function AuthPage() {
                   placeholder="000000"
                 />
                 <span className="text-xs font-normal text-muted-foreground">
-                  کد ارسال‌شده از سامانه sms.ir با قالب ۸۸۸۲۱۷
+                  کد ۶ رقمی ارسال‌شده به شماره همراه شما
                 </span>
               </label>
               {error && (
@@ -489,21 +813,18 @@ function AuthPage() {
             </form>
           )}
 
-          {error && !codeSent && (
+          {error && !codeSent && authMethod === "phone" && (
             <p role="alert" className="mt-3 text-sm text-destructive">
               {error}
             </p>
           )}
-          {notice && !codeSent && (
+          {notice && !codeSent && authMethod === "phone" && (
             <p role="status" className="mt-3 flex items-center gap-2 text-sm text-primary">
               <Clock3 className="size-4" />
               {notice}
             </p>
           )}
-          <p className="mt-6 text-center text-xs leading-6 text-muted-foreground">
-            اطلاعات کاربران در دیتابیس ابری Cloudflare D1 با شناسه 9da7735b-e4c9-4f7f-9abe-53ba1545c60e ذخیره می‌شود.
-          </p>
-          <Button asChild variant="link" className="mt-2 w-full">
+          <Button asChild variant="link" className="mt-4 w-full">
             <Link to="/">بازگشت به صفحه اصلی</Link>
           </Button>
         </div>

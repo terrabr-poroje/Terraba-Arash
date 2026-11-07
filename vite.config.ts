@@ -69,7 +69,7 @@ function smsDevApiPlugin(): Plugin {
               res.end(
                 JSON.stringify({
                   success: true,
-                  message: "کد تأیید شد و کاربر با موفقیت در دیتابیس D1 ذخیره شد.",
+                  message: "ورود با موفقیت انجام شد.",
                   user: authResult.user,
                   member: authResult.member,
                   roles: authResult.roles,
@@ -80,7 +80,63 @@ function smsDevApiPlugin(): Plugin {
               console.error("[dev verify-otp exception]", err);
               res.setHeader("Content-Type", "application/json; charset=utf-8");
               res.statusCode = 500;
-              res.end(JSON.stringify({ success: false, message: "خطای سرور در تأیید کد و ثبت‌نام در دیتابیس" }));
+              res.end(JSON.stringify({ success: false, message: "خطای سرور در تأیید کد و ورود" }));
+            }
+          });
+          return;
+        }
+
+        // Handle Email authentication in dev
+        if (req.method === "POST" && req.url === "/api/auth/email-login") {
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk;
+          });
+          req.on("end", async () => {
+            try {
+              const parsed = JSON.parse(body || "{}");
+              const { registerOrLoginUserWithEmail } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+                registerOrLoginUserWithEmail: (p: any) => Promise<any>;
+              };
+
+              const email = (parsed.email || "").trim().toLowerCase();
+              if (!email || !email.includes("@")) {
+                res.setHeader("Content-Type", "application/json; charset=utf-8");
+                res.statusCode = 400;
+                res.end(JSON.stringify({ success: false, message: "نشانی ایمیل معتبر نیست." }));
+                return;
+              }
+
+              const authResult = await registerOrLoginUserWithEmail({
+                email,
+                password: parsed.password,
+                fullName: parsed.fullName,
+                phone: parsed.phone,
+                city: parsed.city,
+                province: parsed.province,
+                role: parsed.role,
+                activity: parsed.activity,
+                mode: parsed.mode,
+              });
+
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader("Set-Cookie", `tb_session=${authResult.sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`);
+              res.statusCode = 200;
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  message: "ورود با موفقیت انجام شد.",
+                  user: authResult.user,
+                  member: authResult.member,
+                  roles: authResult.roles,
+                  sessionToken: authResult.sessionToken,
+                }),
+              );
+            } catch (err: any) {
+              console.error("[dev email-login error]", err);
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = 400;
+              res.end(JSON.stringify({ success: false, message: err?.message || "خطا در ورود با ایمیل" }));
             }
           });
           return;

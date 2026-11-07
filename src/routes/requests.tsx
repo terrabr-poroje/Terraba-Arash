@@ -208,7 +208,7 @@ export function Requests({ ordersOnly = false, professionalOnly = false }: { ord
         .order("created_at", { ascending: false });
       if (!active) return;
       if (error) {
-        setLoadError("دریافت بارهای واقعی انجام نشد. اتصال دیتابیس یا مجوز مشاهده را بررسی کنید.");
+        setLoadError("دریافت بارهای جدید با خطا مواجه شد. لطفاً دوباره تلاش کنید.");
       } else {
         const loadIds = (data ?? []).map((row: any) => row.id);
         const { data: tiers } = loadIds.length ? await (supabase as any).from("load_price_tiers").select("load_id, sale_type, unit_price, minimum_packages, min_quantity, max_quantity").in("load_id", loadIds) : { data: [] };
@@ -496,7 +496,7 @@ export function Requests({ ordersOnly = false, professionalOnly = false }: { ord
           {loadError && <p role="alert" className="mt-4 text-sm text-destructive">{loadError}</p>}
           {cartError && <p role="alert" className="mt-3 text-sm text-destructive">{cartError} <Link to="/cart" className="font-bold underline">رفتن به سبد خرید</Link></p>}
           {filtered.length ? <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 xl:grid-cols-5">{filtered.map(load => <LoadCard key={`${load.isSample ? "sample" : "live"}-${load.id}`} load={load} purchaseMode={purchaseMode} cartSelected={cartItems.some(item => String(item.load.id) === String(load.id))} onAddToCart={addToCart} />)}</div> : <div className="py-16 text-center"><Search className="mx-auto mb-4 size-10 text-muted-foreground" /><h3 className="text-lg font-bold">باری با این مشخصات پیدا نشد</h3><p className="mt-3 text-sm text-muted-foreground">در این نوع خرید، در حال حاضر بار فعالی با این مشخصات پیدا نشد.</p><Button variant="outline" className="mt-5" onClick={reset}>حذف فیلترها</Button></div>}
-          <div className="mt-7 flex items-center justify-center gap-2 text-xs text-muted-foreground"><PackageCheck className="size-4 text-primary" />{liveLoads.length ? "بارهای ثبت‌شده از دیتابیس نمایش داده می‌شوند؛ کارت‌های نمونه در محیط توسعه مشخص‌اند." : "تا زمان ثبت بار واقعی، کارت‌های نمایشی نمونه هستند."}</div>
+          <div className="mt-7 flex items-center justify-center gap-2 text-xs text-muted-foreground"><PackageCheck className="size-4 text-primary" />{liveLoads.length ? "بارهای فعال و ثبت‌شده در بازار نمایش داده می‌شوند." : "تا زمان ثبت بار جدید، موارد پیشنهادی بازار قابل مشاهده است."}</div>
         </div>
       </section>
 

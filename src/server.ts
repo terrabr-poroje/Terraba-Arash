@@ -7,6 +7,7 @@ import { sendOtpSms, verifyOtpCode } from "./lib/sms-service";
 import {
   setCloudflareD1Binding,
   registerOrLoginUserWithPhone,
+  registerOrLoginUserWithEmail,
   validateD1Session,
   invalidateD1Session,
 } from "./lib/d1-database";
@@ -122,7 +123,7 @@ export default {
           return new Response(
             JSON.stringify({
               success: true,
-              message: "کد تأیید شد و کاربر با موفقیت در دیتابیس D1 ذخیره شد.",
+              message: "ورود با موفقیت انجام شد.",
               user: authResult.user,
               member: authResult.member,
               roles: authResult.roles,
@@ -138,10 +139,74 @@ export default {
           );
         } catch (e) {
           console.error("[verify-otp exception]", e);
-          return new Response(JSON.stringify({ success: false, message: "خطای سرور در تأیید کد و ثبت‌نام در دیتابیس" }), {
+          return new Response(JSON.stringify({ success: false, message: "خطای سرور در تأیید کد و ورود" }), {
             status: 500,
             headers: { "content-type": "application/json; charset=utf-8" },
           });
+        }
+      }
+
+      // Handle Email authentication (login & signup)
+      if (url.pathname === "/api/auth/email-login" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as {
+            email?: string;
+            password?: string;
+            fullName?: string;
+            phone?: string;
+            city?: string;
+            province?: string;
+            role?: string;
+            activity?: string;
+            mode?: "login" | "signup";
+          };
+
+          const email = body?.email?.trim() || "";
+          if (!email || !email.includes("@")) {
+            return new Response(JSON.stringify({ success: false, message: "نشانی ایمیل معتبر نیست." }), {
+              status: 400,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            });
+          }
+
+          const authResult = await registerOrLoginUserWithEmail({
+            email,
+            password: body?.password,
+            fullName: body?.fullName,
+            phone: body?.phone,
+            city: body?.city,
+            province: body?.province,
+            role: body?.role,
+            activity: body?.activity,
+            mode: body?.mode,
+          });
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: "ورود با موفقیت انجام شد.",
+              user: authResult.user,
+              member: authResult.member,
+              roles: authResult.roles,
+              sessionToken: authResult.sessionToken,
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json; charset=utf-8",
+                "Set-Cookie": `tb_session=${authResult.sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`,
+              },
+            },
+          );
+        } catch (e: any) {
+          console.error("[email-login exception]", e);
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در احراز هویت با ایمیل" }),
+            {
+              status: 400,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            },
+          );
         }
       }
 
