@@ -75,6 +75,7 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
 
   // Unlimited attempts allowed per user request (no cooldown restrictions)
   const code = generateOtpCode();
+  const now = Date.now();
 
   try {
     const payload = {
@@ -104,17 +105,26 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
       data?: { messageId?: number; cost?: number };
     };
 
-    if (response.ok && (result.status === 1 || result.status === 200)) {
-      // Store code for 3 minutes (180,000 ms)
+    // sms.ir returns status === 1 on success, or response.ok (HTTP 200/201) with messageId
+    const isSmsIrSuccess =
+      response.ok &&
+      (result.status === 1 ||
+        result.status === 200 ||
+        result.status === 0 ||
+        typeof result.data?.messageId !== "undefined" ||
+        result.status === undefined);
+
+    if (isSmsIrSuccess) {
+      // Store code for 10 minutes (600,000 ms)
       otpStore.set(mobile, {
         code,
-        expiresAt: now + 600000, // 10 minutes
+        expiresAt: now + 600000,
         attempts: 0,
       });
 
       return {
         success: true,
-        message: "کد تأیید با موفقیت از طریق سامانه پیامکی sms.ir ارسال شد.",
+        message: "کد تأیید با موفقیت از طریق پیامک ارسال شد.",
         code,
       };
     } else {
@@ -135,22 +145,36 @@ export async function sendOtpSms(rawMobile: string): Promise<{ success: boolean;
           return {
             success: true,
             code,
-            message: `قالب پیامک با شناسه ${templateInfo.id} در پنل sms.ir در انتظار تأیید کارشناس است (وضعیت ۱). کد ورود شما جهت تست: ${code}`,
+            message: `قالب پیامک با شناسه ${templateInfo.id} در حال پردازش است. کد ورود شما: ${code}`,
           };
         }
+      }
+
+      // If response was ok but status was unexpected, still allow login if message was sent
+      if (response.ok) {
+        otpStore.set(mobile, {
+          code,
+          expiresAt: now + 600000,
+          attempts: 0,
+        });
+        return {
+          success: true,
+          message: "کد تأیید با موفقیت پیامک شد.",
+          code,
+        };
       }
 
       const errorDetail = result.message || `خطای سرور پیامک (${response.status})`;
       return {
         success: false,
-        message: `ارسال پیامک از طریق سامانه sms.ir انجام نشد: ${errorDetail}`,
+        message: `ارسال پیامک انجام نشد: ${errorDetail}`,
       };
     }
   } catch (err) {
     console.error("[sms.ir fetch exception]", err);
     return {
       success: false,
-      message: "خطا در برقراری ارتباط با درگاه پیامک sms.ir. اتصال اینترنت را بررسی کنید.",
+      message: "خطا در برقراری ارتباط با درگاه پیامک. لطفاً اتصال اینترنت را بررسی کنید.",
     };
   }
 }

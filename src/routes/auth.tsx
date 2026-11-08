@@ -761,6 +761,22 @@ function AuthPage() {
                 {busy ? "در حال ارسال…" : "دریافت کد پیامکی"}
                 <Phone className="mr-2 size-4" />
               </Button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const cleaned = phone.replace(/[^\d]/g, "");
+                  if (cleaned.length >= 10) {
+                    setCodeSent(true);
+                    setError("");
+                  } else {
+                    setError("ابتدا شماره همراه خود را وارد کنید (مثال: ۰۹۱۲۳۴۵۶۷۸۹).");
+                  }
+                }}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors underline text-center pt-1"
+              >
+                کد تأیید را از قبل در پیامک دریافت کرده‌اید؟ ورود کد تأیید
+              </button>
             </form>
           ) : (
             /* PHONE AUTH: STEP 2 (ENTER OTP CODE) */
