@@ -20,27 +20,39 @@ export const POLYFILL_INLINE_SCRIPT = `
     }
 
     // 2. crypto and crypto.randomUUID
-    if (typeof window !== 'undefined') {
-      if (!window.crypto) {
-        window.crypto = {};
-      }
-      if (!window.crypto.getRandomValues) {
-        window.crypto.getRandomValues = function(arr) {
-          for (var i = 0; i < arr.length; i++) {
-            arr[i] = Math.floor(Math.random() * 256);
+    try {
+      if (typeof window !== 'undefined') {
+        if (!window.crypto) {
+          try { window.crypto = {}; } catch (e) {}
+        }
+        if (window.crypto && !window.crypto.getRandomValues) {
+          try {
+            window.crypto.getRandomValues = function(arr) {
+              for (var i = 0; i < arr.length; i++) {
+                arr[i] = Math.floor(Math.random() * 256);
+              }
+              return arr;
+            };
+          } catch (e) {}
+        }
+        if (window.crypto && !window.crypto.randomUUID) {
+          var uuidFn = function() {
+            return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) {
+              var n = Number(c);
+              var rnd = window.crypto && window.crypto.getRandomValues ? window.crypto.getRandomValues(new Uint8Array(1))[0] : Math.floor(Math.random() * 256);
+              return (n ^ (rnd & (15 >> (n / 4)))).toString(16);
+            });
+          };
+          try {
+            window.crypto.randomUUID = uuidFn;
+          } catch (e) {
+            try {
+              Object.defineProperty(window.crypto, 'randomUUID', { value: uuidFn, configurable: true, writable: true });
+            } catch (e2) {}
           }
-          return arr;
-        };
+        }
       }
-      if (!window.crypto.randomUUID) {
-        window.crypto.randomUUID = function() {
-          return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) {
-            var n = Number(c);
-            return (n ^ (window.crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (n / 4)))).toString(16);
-          });
-        };
-      }
-    }
+    } catch (e) {}
 
     // 3. structuredClone fallback
     if (typeof window !== 'undefined' && typeof window.structuredClone !== 'function') {
@@ -300,6 +312,8 @@ export const POLYFILL_INLINE_SCRIPT = `
           }
         }).catch(function() {});
       } catch(e) {}
+    if (typeof window !== 'undefined') {
+      window.__terrabar_polyfills_ready__ = true;
     }
   } catch(e) {
     if (typeof console !== 'undefined' && console.warn) {
@@ -311,7 +325,7 @@ export const POLYFILL_INLINE_SCRIPT = `
 
 export function initBrowserPolyfills(): void {
   if (typeof window === "undefined") return;
-  // Evaluate polyfills if loaded as module
+  if ("__terrabar_polyfills_ready__" in window) return;
   try {
     const fn = new Function(POLYFILL_INLINE_SCRIPT);
     fn();

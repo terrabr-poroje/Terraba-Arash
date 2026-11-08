@@ -68,6 +68,31 @@ export default {
 
       const url = new URL(request.url);
 
+      // Serve static assets via Cloudflare Workers ASSETS binding if available
+      if (env && (env as any).ASSETS && typeof (env as any).ASSETS.fetch === "function") {
+        const isStaticAsset =
+          url.pathname.startsWith("/assets/") ||
+          url.pathname.startsWith("/fonts/") ||
+          url.pathname.startsWith("/_build/") ||
+          url.pathname === "/favicon.ico" ||
+          url.pathname === "/favicon.svg" ||
+          url.pathname === "/apple-touch-icon.png" ||
+          url.pathname === "/robots.txt" ||
+          url.pathname === "/sitemap.xml" ||
+          /\.(js|mjs|css|woff2?|ttf|otf|eot|svg|ico|png|jpe?g|webp|gif|json|xml|txt)$/i.test(url.pathname);
+
+        if (isStaticAsset) {
+          try {
+            const assetResponse = await (env as any).ASSETS.fetch(request);
+            if (assetResponse && assetResponse.status < 400) {
+              return assetResponse;
+            }
+          } catch {
+            // Fall back to SSR handler if asset fetch fails
+          }
+        }
+      }
+
       // Handle sms.ir OTP send endpoint
       if (url.pathname === "/api/sms/send-otp" && request.method === "POST") {
         try {

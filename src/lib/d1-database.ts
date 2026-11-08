@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import path from "node:path";
+import { createRequire } from "node:module";
 
 let cachedDbSync: any = null;
 function getDatabaseSync() {
   if (cachedDbSync !== null) return cachedDbSync;
   try {
-    // Dynamic import to prevent crash in Cloudflare Workers environment
+    // Only in Node.js runtime (not in browser or Cloudflare Workers)
     if (typeof process !== "undefined" && process.versions?.node) {
-      const sqliteMod = eval('require("node:sqlite")');
+      const require = createRequire(import.meta.url);
+      const sqliteMod = require("node:sqlite");
       cachedDbSync = sqliteMod?.DatabaseSync || false;
       return cachedDbSync;
     }
@@ -105,10 +107,8 @@ function getLocalSqlite(): D1Database {
 
     globalForD1.__terrabar_d1_local__ = instance;
     return instance;
-  } catch (err) {
-    console.warn("[D1 Database] Could not initialize local SQLite, falling back to in-memory store", err);
-    // In-memory fallback
-    const memoryStore: Record<string, any[]> = {};
+  } catch {
+    // Fallback store for environments without local filesystem SQLite (e.g. Cloudflare Workers where env.DB is bound)
     return {
       prepare(sql: string) {
         return {
