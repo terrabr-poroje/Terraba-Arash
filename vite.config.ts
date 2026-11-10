@@ -352,8 +352,12 @@ export default defineConfig({
       port: 3000,
       allowedHosts: true,
       cors: true,
-      hmr: process.env.DISABLE_HMR !== "true",
-      watch: process.env.DISABLE_HMR === "true" ? null : {},
+      hmr: false,
+      watch: null,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "X-Content-Type-Options": "nosniff",
+      },
     },
     build: {
       target: ["es2018", "chrome65", "edge18", "firefox65", "safari12"],

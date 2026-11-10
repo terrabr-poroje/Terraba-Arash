@@ -69,28 +69,61 @@ export default {
       const url = new URL(request.url);
 
       // Serve static assets via Cloudflare Workers ASSETS binding if available
-      if (env && (env as any).ASSETS && typeof (env as any).ASSETS.fetch === "function") {
-        const isStaticAsset =
-          url.pathname.startsWith("/assets/") ||
-          url.pathname.startsWith("/fonts/") ||
-          url.pathname.startsWith("/_build/") ||
-          url.pathname === "/favicon.ico" ||
-          url.pathname === "/favicon.svg" ||
-          url.pathname === "/apple-touch-icon.png" ||
-          url.pathname === "/robots.txt" ||
-          url.pathname === "/sitemap.xml" ||
-          /\.(js|mjs|css|woff2?|ttf|otf|eot|svg|ico|png|jpe?g|webp|gif|json|xml|txt)$/i.test(url.pathname);
+      const isStaticAsset =
+        url.pathname.startsWith("/assets/") ||
+        url.pathname.startsWith("/fonts/") ||
+        url.pathname.startsWith("/_build/") ||
+        url.pathname === "/favicon.ico" ||
+        url.pathname === "/favicon.svg" ||
+        url.pathname === "/apple-touch-icon.png" ||
+        url.pathname === "/robots.txt" ||
+        url.pathname === "/sitemap.xml" ||
+        /\.(js|mjs|css|woff2?|ttf|otf|eot|svg|ico|png|jpe?g|webp|gif|json|xml|txt)$/i.test(url.pathname);
 
-        if (isStaticAsset) {
+      if (isStaticAsset) {
+        if (env && (env as any).ASSETS && typeof (env as any).ASSETS.fetch === "function") {
           try {
             const assetResponse = await (env as any).ASSETS.fetch(request);
             if (assetResponse && assetResponse.status < 400) {
-              return assetResponse;
+              const headers = new Headers(assetResponse.headers);
+              headers.set("Access-Control-Allow-Origin", "*");
+
+              // Guarantee correct MIME types to strictly satisfy Blink/V8 and WebKit requirements
+              if (url.pathname.endsWith(".js") || url.pathname.endsWith(".mjs")) {
+                headers.set("Content-Type", "application/javascript; charset=utf-8");
+              } else if (url.pathname.endsWith(".css")) {
+                headers.set("Content-Type", "text/css; charset=utf-8");
+              } else if (url.pathname.endsWith(".woff2")) {
+                headers.set("Content-Type", "font/woff2");
+              } else if (url.pathname.endsWith(".svg")) {
+                headers.set("Content-Type", "image/svg+xml");
+              } else if (url.pathname.endsWith(".webp")) {
+                headers.set("Content-Type", "image/webp");
+              }
+
+              return new Response(assetResponse.body, {
+                status: assetResponse.status,
+                headers,
+              });
             }
           } catch {
-            // Fall back to SSR handler if asset fetch fails
+            // Asset fetch exception
           }
         }
+
+        // CRITICAL: NEVER pass static asset requests to SSR!
+        // Returning text/html for a script crashes Chrome & Safari with strict MIME checking.
+        return new Response("Asset not found", {
+          status: 404,
+          headers: {
+            "content-type": url.pathname.endsWith(".js") || url.pathname.endsWith(".mjs")
+              ? "application/javascript; charset=utf-8"
+              : url.pathname.endsWith(".css")
+                ? "text/css; charset=utf-8"
+                : "text/plain",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
       }
 
       // Handle sms.ir OTP send endpoint
@@ -425,7 +458,18 @@ export default {
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+
+      // Clean cross-browser headers: remove any X-Frame-Options that blocks preview in Chrome/Safari/Firefox
+      const responseHeaders = new Headers(normalized.headers);
+      responseHeaders.delete("x-frame-options");
+      responseHeaders.set("Access-Control-Allow-Origin", "*");
+      responseHeaders.set("X-Content-Type-Options", "nosniff");
+
+      return new Response(normalized.body, {
+        status: normalized.status,
+        headers: responseHeaders,
+      });
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

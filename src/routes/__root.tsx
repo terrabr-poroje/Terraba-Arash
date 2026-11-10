@@ -81,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { httpEquiv: "X-UA-Compatible", content: "IE=edge" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=5" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" },
       { name: "theme-color", content: "#1e704b" },
       { name: "format-detection", content: "telephone=no" },
       { title: "ترابار | بازار میوه و تره‌بار ایران" },

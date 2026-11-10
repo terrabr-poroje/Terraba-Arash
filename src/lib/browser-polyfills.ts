@@ -1,10 +1,10 @@
 /**
  * Comprehensive Browser Compatibility Polyfills & Fallbacks
- * Ensures Terrabar runs smoothly on older mobile and desktop browsers:
- * - Safari 11 - 15 (iOS 11 - 15)
- * - Chrome 60 - 95 (Android WebView, Samsung Internet 7+)
- * - Firefox 60 - 95
- * - Legacy Edge & legacy Chromium browsers
+ * Ensures Terrabar runs smoothly on all mobile and desktop browsers:
+ * - Safari 11 - 18+ (macOS & iOS WebKit / sealed window.crypto / SecurityError in pushState)
+ * - Google Chrome & Chromium (Blink/V8, strict MIME types, iframe/sandbox)
+ * - Firefox & Firefox Nightly (Gecko, HMR neutrality, Accept: *\/* handling)
+ * - Samsung Internet, Opera, Brave, in-app WebViews (Telegram, Instagram, etc.)
  */
 
 export const POLYFILL_INLINE_SCRIPT = `
@@ -19,42 +19,94 @@ export const POLYFILL_INLINE_SCRIPT = `
       }
     }
 
-    // 2. crypto and crypto.randomUUID
+    // 2. Sealed window.crypto & crypto.randomUUID (WebKit / Safari iOS safe)
     try {
       if (typeof window !== 'undefined') {
-        if (!window.crypto) {
-          try { window.crypto = {}; } catch (e) {}
-        }
-        if (window.crypto && !window.crypto.getRandomValues) {
+        var c = window.crypto || window.msCrypto;
+        if (!c) {
           try {
-            window.crypto.getRandomValues = function(arr) {
-              for (var i = 0; i < arr.length; i++) {
-                arr[i] = Math.floor(Math.random() * 256);
-              }
-              return arr;
-            };
+            c = {};
+            Object.defineProperty(window, 'crypto', { value: c, writable: true, configurable: true });
           } catch (e) {}
         }
-        if (window.crypto && !window.crypto.randomUUID) {
-          var uuidFn = function() {
-            return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) {
-              var n = Number(c);
-              var rnd = window.crypto && window.crypto.getRandomValues ? window.crypto.getRandomValues(new Uint8Array(1))[0] : Math.floor(Math.random() * 256);
-              return (n ^ (rnd & (15 >> (n / 4)))).toString(16);
-            });
-          };
-          try {
-            window.crypto.randomUUID = uuidFn;
-          } catch (e) {
+        if (c) {
+          if (!c.getRandomValues) {
             try {
-              Object.defineProperty(window.crypto, 'randomUUID', { value: uuidFn, configurable: true, writable: true });
-            } catch (e2) {}
+              c.getRandomValues = function(arr) {
+                for (var i = 0; i < arr.length; i++) {
+                  arr[i] = Math.floor(Math.random() * 256);
+                }
+                return arr;
+              };
+            } catch (e) {}
+          }
+          if (!c.randomUUID) {
+            var uuidFn = function() {
+              return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(ch) {
+                var n = Number(ch);
+                var rnd = (c && c.getRandomValues) ? c.getRandomValues(new Uint8Array(1))[0] : Math.floor(Math.random() * 256);
+                return (n ^ (rnd & (15 >> (n / 4)))).toString(16);
+              });
+            };
+            try {
+              c.randomUUID = uuidFn;
+            } catch (e) {
+              try {
+                Object.defineProperty(c, 'randomUUID', { value: uuidFn, configurable: true, writable: true });
+              } catch (e2) {}
+            }
           }
         }
       }
     } catch (e) {}
 
-    // 3. structuredClone fallback
+    // 3. History API safe wrappers (Prevents SecurityError in Safari iOS & sandboxed iframes)
+    try {
+      if (typeof window !== 'undefined' && window.history) {
+        var origPush = window.history.pushState;
+        if (typeof origPush === 'function') {
+          window.history.pushState = function(state, title, url) {
+            try {
+              return origPush.apply(window.history, arguments);
+            } catch (err) {
+              // Ignore SecurityError / sandbox restriction in Safari & Firefox
+            }
+          };
+        }
+        var origReplace = window.history.replaceState;
+        if (typeof origReplace === 'function') {
+          window.history.replaceState = function(state, title, url) {
+            try {
+              return origReplace.apply(window.history, arguments);
+            } catch (err) {
+              // Ignore SecurityError / sandbox restriction in Safari & Firefox
+            }
+          };
+        }
+      }
+    } catch (e) {}
+
+    // 4. window.matchMedia safe fallback
+    try {
+      if (typeof window !== 'undefined') {
+        if (!window.matchMedia) {
+          window.matchMedia = function(query) {
+            return {
+              matches: false,
+              media: query,
+              onchange: null,
+              addListener: function() {},
+              removeListener: function() {},
+              addEventListener: function() {},
+              removeEventListener: function() {},
+              dispatchEvent: function() { return false; }
+            };
+          };
+        }
+      }
+    } catch (e) {}
+
+    // 5. structuredClone fallback
     if (typeof window !== 'undefined' && typeof window.structuredClone !== 'function') {
       window.structuredClone = function(obj) {
         if (obj === undefined) return undefined;
@@ -68,7 +120,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 4. Promise.allSettled
+    // 6. Promise.allSettled
     if (typeof Promise !== 'undefined' && !Promise.allSettled) {
       Promise.allSettled = function(promises) {
         return Promise.all(
@@ -82,7 +134,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 5. Promise.any
+    // 7. Promise.any
     if (typeof Promise !== 'undefined' && !Promise.any) {
       Promise.any = function(promises) {
         return new Promise(function(resolve, reject) {
@@ -106,7 +158,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 6. Array.prototype.flat & flatMap
+    // 8. Array.prototype.flat & flatMap
     if (!Array.prototype.flat) {
       Array.prototype.flat = function(depth) {
         var d = typeof depth === 'number' ? depth : 1;
@@ -124,7 +176,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 7. Array.prototype.at & String.prototype.at
+    // 9. Array.prototype.at & String.prototype.at
     if (!Array.prototype.at) {
       Array.prototype.at = function(index) {
         var idx = Math.trunc(index) || 0;
@@ -142,7 +194,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 8. Object.fromEntries & Object.hasOwn
+    // 10. Object.fromEntries & Object.hasOwn
     if (!Object.fromEntries) {
       Object.fromEntries = function(entries) {
         if (!entries || !entries[Symbol.iterator]) return {};
@@ -164,7 +216,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 9. String.prototype.replaceAll
+    // 11. String.prototype.replaceAll
     if (!String.prototype.replaceAll) {
       String.prototype.replaceAll = function(search, replacement) {
         if (search instanceof RegExp) {
@@ -175,7 +227,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 10. queueMicrotask
+    // 12. queueMicrotask
     if (typeof window !== 'undefined' && typeof window.queueMicrotask !== 'function') {
       window.queueMicrotask = function(cb) {
         Promise.resolve().then(cb).catch(function(err) {
@@ -184,7 +236,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 11. requestIdleCallback / cancelIdleCallback (iOS Safari fallback)
+    // 13. requestIdleCallback / cancelIdleCallback (iOS Safari fallback)
     if (typeof window !== 'undefined') {
       if (!window.requestIdleCallback) {
         window.requestIdleCallback = function(cb) {
@@ -206,7 +258,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       }
     }
 
-    // 12. ResizeObserver safe fallback
+    // 14. ResizeObserver safe fallback
     if (typeof window !== 'undefined' && typeof window.ResizeObserver === 'undefined') {
       window.ResizeObserver = function() {
         this.observe = function() {};
@@ -215,7 +267,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 13. IntersectionObserver safe fallback (marks elements visible immediately)
+    // 15. IntersectionObserver safe fallback
     if (typeof window !== 'undefined' && typeof window.IntersectionObserver === 'undefined') {
       window.IntersectionObserver = function(callback) {
         this.observe = function(element) {
@@ -236,7 +288,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 14. Element.prototype.replaceChildren
+    // 16. Element.prototype.replaceChildren
     if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
       Element.prototype.replaceChildren = function() {
         while (this.firstChild) {
@@ -246,73 +298,93 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 15. NodeList.prototype.forEach
+    // 17. NodeList.prototype.forEach
     if (typeof NodeList !== 'undefined' && !NodeList.prototype.forEach) {
       NodeList.prototype.forEach = Array.prototype.forEach;
     }
 
-    // 16. navigator.clipboard fallback for older browsers / non-HTTPS
-    if (typeof navigator !== 'undefined') {
-      if (!navigator.clipboard) {
-        navigator.clipboard = {
-          writeText: function(text) {
-            return new Promise(function(resolve, reject) {
-              try {
-                var textArea = document.createElement('textarea');
-                textArea.value = text;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-9999px';
-                textArea.style.top = '-9999px';
-                textArea.style.opacity = '0';
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                var successful = document.execCommand('copy');
-                document.body.removeChild(textArea);
-                if (successful) resolve();
-                else reject(new Error('Copy failed'));
-              } catch (err) {
-                reject(err);
-              }
-            });
-          }
-        };
-      }
+    // 18. navigator.clipboard fallback for older browsers / non-HTTPS
+    if (typeof navigator !== 'undefined' && !navigator.clipboard) {
+      navigator.clipboard = {
+        writeText: function(text) {
+          return new Promise(function(resolve, reject) {
+            try {
+              var textArea = document.createElement('textarea');
+              textArea.value = text;
+              textArea.style.position = 'fixed';
+              textArea.style.left = '-9999px';
+              textArea.style.top = '-9999px';
+              textArea.style.opacity = '0';
+              document.body.appendChild(textArea);
+              textArea.focus();
+              textArea.select();
+              var successful = document.execCommand('copy');
+              document.body.removeChild(textArea);
+              if (successful) resolve();
+              else reject(new Error('Copy failed'));
+            } catch (err) {
+              reject(err);
+            }
+          });
+        }
+      };
     }
 
-    // 17. Feature flag tags on documentElement for CSS resilience
+    // 19. Feature flag tags on documentElement for CSS resilience
     if (typeof document !== 'undefined' && document.documentElement) {
       var docEl = document.documentElement;
       
       // Check OKLCH support
       var supportsOklch = false;
       if (typeof CSS !== 'undefined' && CSS.supports) {
-        supportsOklch = CSS.supports('color', 'oklch(0 0 0)');
+        try {
+          supportsOklch = CSS.supports('color', 'oklch(0 0 0)');
+        } catch(e) {}
       }
       if (!supportsOklch) {
         docEl.classList.add('no-oklch');
       }
 
       // Check WebP support
-      var testCanvas = document.createElement('canvas');
-      if (testCanvas.getContext && testCanvas.getContext('2d')) {
-        var isWebPSupported = testCanvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
-        if (!isWebPSupported) {
-          docEl.classList.add('no-webp');
+      try {
+        var testCanvas = document.createElement('canvas');
+        if (testCanvas.getContext && testCanvas.getContext('2d')) {
+          var isWebPSupported = testCanvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+          if (!isWebPSupported) {
+            docEl.classList.add('no-webp');
+          }
         }
-      }
+      } catch(e) {}
     }
 
-    // 18. Ensure no stale service workers or caches lock subsequent page loads
+    // 20. Clean up any stale service workers or caches that could lock subsequent loads
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         navigator.serviceWorker.getRegistrations().then(function(regs) {
-          for (var i = 0; i < regs.length; i++) {
-            regs[i].unregister();
+          if (regs && regs.length) {
+            for (var i = 0; i < regs.length; i++) {
+              try { regs[i].unregister(); } catch(e) {}
+            }
           }
         }).catch(function() {});
       } catch(e) {}
+    }
+
+    // 21. Suppress non-critical uncaught errors (like ResizeObserver loop limits, aborted fetches)
     if (typeof window !== 'undefined') {
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event && event.reason) {
+          var reasonStr = String(event.reason);
+          if (
+            reasonStr.indexOf('ResizeObserver') !== -1 ||
+            reasonStr.indexOf('SecurityError') !== -1 ||
+            reasonStr.indexOf('Failed to fetch') !== -1 ||
+            reasonStr.indexOf('AbortError') !== -1
+          ) {
+            event.preventDefault();
+          }
+        }
+      });
       window.__terrabar_polyfills_ready__ = true;
     }
   } catch(e) {
