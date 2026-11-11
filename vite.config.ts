@@ -144,6 +144,66 @@ function smsDevApiPlugin(): Plugin {
           return;
         }
 
+        // Handle Admin login in dev
+        if (req.method === "POST" && req.url === "/api/admin/login") {
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk;
+          });
+          req.on("end", async () => {
+            try {
+              const { username, password } = JSON.parse(body || "{}");
+              if ((password || "").trim() !== "Amir-112233") {
+                res.setHeader("Content-Type", "application/json; charset=utf-8");
+                res.statusCode = 401;
+                res.end(JSON.stringify({ success: false, message: "رمز عبور موقت مدیر نادرست است." }));
+                return;
+              }
+
+              const cleanUsername = (username || "").trim();
+              const token = `admin_sess_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+              const user = {
+                id: "admin_user_main",
+                phone: "09120000000",
+                full_name: cleanUsername === "admin" ? "مدیر کل ترابار" : cleanUsername || "مدیر ارشد ترابار",
+                role: "admin",
+                city: "تهران",
+                province: "تهران",
+                email: `${cleanUsername || "admin"}@terrabar.ir`,
+              };
+              const member = {
+                id: "mem_admin_user_main",
+                auth_user_id: "admin_user_main",
+                full_name: user.full_name,
+                phone: user.phone,
+                role: "admin",
+                city: user.city,
+                province: user.province,
+              };
+              const roles = ["admin", "buyer", "seller", "supplier"];
+
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.setHeader("Set-Cookie", `tb_session=${token}; Path=/; Max-Age=2592000; SameSite=Lax`);
+              res.statusCode = 200;
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  message: "ورود مدیر با موفقیت تأیید شد.",
+                  user,
+                  member,
+                  roles,
+                  sessionToken: token,
+                }),
+              );
+            } catch {
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, message: "خطا در احراز هویت مدیر" }));
+            }
+          });
+          return;
+        }
+
         if (req.method === "GET" && req.url === "/api/auth/session") {
           try {
             const authHeader = (req.headers["authorization"] as string) || "";

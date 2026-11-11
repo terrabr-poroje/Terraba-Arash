@@ -274,6 +274,76 @@ export default {
         }
       }
 
+      // Handle Admin login with temporary password Amir-112233
+      if (url.pathname === "/api/admin/login" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as {
+            username?: string;
+            password?: string;
+          };
+          const username = body?.username?.trim() || "";
+          const password = body?.password?.trim() || "";
+
+          if (password !== "Amir-112233") {
+            return new Response(
+              JSON.stringify({ success: false, message: "رمز عبور موقت مدیر نادرست است." }),
+              {
+                status: 401,
+                headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+              },
+            );
+          }
+
+          const token = `admin_sess_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+          const user = {
+            id: "admin_user_main",
+            phone: "09120000000",
+            full_name: username === "admin" ? "مدیر کل ترابار" : username || "مدیر ارشد ترابار",
+            role: "admin",
+            city: "تهران",
+            province: "تهران",
+            email: `${username || "admin"}@terrabar.ir`,
+          };
+          const member = {
+            id: "mem_admin_user_main",
+            auth_user_id: "admin_user_main",
+            full_name: user.full_name,
+            phone: user.phone,
+            role: "admin",
+            city: user.city,
+            province: user.province,
+          };
+          const roles = ["admin", "buyer", "seller", "supplier"];
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: "ورود مدیر با موفقیت تأیید شد.",
+              user,
+              member,
+              roles,
+              sessionToken: token,
+            }),
+            {
+              status: 200,
+              headers: {
+                "content-type": "application/json; charset=utf-8",
+                "Set-Cookie": `tb_session=${token}; Path=/; Max-Age=2592000; SameSite=Lax`,
+                "Access-Control-Allow-Origin": "*",
+              },
+            },
+          );
+        } catch {
+          return new Response(
+            JSON.stringify({ success: false, message: "خطا در احراز هویت مدیر" }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+            },
+          );
+        }
+      }
+
       // Handle D1 session validation
       if (url.pathname === "/api/auth/session" && request.method === "GET") {
         try {
