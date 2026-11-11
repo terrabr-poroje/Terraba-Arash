@@ -88,6 +88,19 @@ export default {
               const headers = new Headers(assetResponse.headers);
               headers.set("Access-Control-Allow-Origin", "*");
 
+              // Aggressive client-side caching:
+              // Versioned JS/CSS/Fonts are immutable (cached for 1 year in browser)
+              if (
+                url.pathname.startsWith("/assets/") ||
+                url.pathname.startsWith("/fonts/") ||
+                url.pathname.startsWith("/_build/") ||
+                /\.(woff2?|ttf|otf|eot)$/i.test(url.pathname)
+              ) {
+                headers.set("Cache-Control", "public, max-age=31536000, immutable");
+              } else {
+                headers.set("Cache-Control", "public, max-age=2592000, stale-while-revalidate=86400");
+              }
+
               // Guarantee correct MIME types to strictly satisfy Blink/V8 and WebKit requirements
               if (url.pathname.endsWith(".js") || url.pathname.endsWith(".mjs")) {
                 headers.set("Content-Type", "application/javascript; charset=utf-8");
@@ -535,6 +548,12 @@ export default {
       responseHeaders.delete("x-frame-options");
       responseHeaders.set("Access-Control-Allow-Origin", "*");
       responseHeaders.set("X-Content-Type-Options", "nosniff");
+
+      // Enable smart client-side caching:
+      // Browser uses cached version while background SWR revalidates for instant repeat visits
+      if (!responseHeaders.has("Cache-Control")) {
+        responseHeaders.set("Cache-Control", "public, max-age=60, stale-while-revalidate=86400");
+      }
 
       return new Response(normalized.body, {
         status: normalized.status,

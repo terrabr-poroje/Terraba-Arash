@@ -9,17 +9,26 @@ if (typeof window !== "undefined") {
 }
 
 export const getRouter = () => {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 1000 * 60 * 5, // 5 minutes fresh in client memory
+        gcTime: 1000 * 60 * 60 * 24, // 24 hours in client garbage collector
+        refetchOnWindowFocus: false,
+        retry: 1,
+      },
+    },
+  });
 
   const router = createRouter({
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    // Warm lazy route chunks when a visitor points to or touches an internal link,
-    // so navigation does not wait until the click to start downloading the next page.
+    // Warm lazy route chunks when a visitor points to or touches an internal link
     defaultPreload: "intent",
-    // Keep the warmed route fresh briefly instead of immediately discarding it.
-    defaultPreloadStaleTime: 30_000,
+    // Keep warmed routes fresh in client memory for 10 minutes
+    defaultPreloadStaleTime: 1000 * 60 * 10,
+    defaultPreloadDelay: 50,
   });
 
   return router;

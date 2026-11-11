@@ -7,6 +7,18 @@ function smsDevApiPlugin(): Plugin {
     name: "sms-ir-dev-middleware",
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        // Cache static fonts, favicons and images in browser for instant repeat loads
+        if (
+          req.url &&
+          (req.url.startsWith("/fonts/") ||
+            req.url.startsWith("/assets/") ||
+            req.url === "/favicon.svg" ||
+            req.url === "/favicon.ico" ||
+            req.url === "/apple-touch-icon.png")
+        ) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+
         if (req.method === "POST" && req.url === "/api/sms/send-otp") {
           let body = "";
           req.on("data", (chunk) => {
