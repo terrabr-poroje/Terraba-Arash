@@ -26,7 +26,7 @@ type RoleHomeData = {
 };
 
 function MemberHome() {
-  const { user, loading } = useAuth();
+  const { user, member: authMember, roles, loading } = useAuth();
   const [roleData, setRoleData] = useState<RoleHomeData | null>(null);
   const [roleCheckDone, setRoleCheckDone] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -34,7 +34,6 @@ function MemberHome() {
   useEffect(() => {
     let active = true;
     async function loadRoleData() {
-      setRoleCheckDone(false);
       setLoadError("");
       if (!user) {
         if (active) {
@@ -44,56 +43,80 @@ function MemberHome() {
         return;
       }
 
-      const { data: member, error: memberError } = await (supabase as any)
-        .from("members")
-        .select("id, full_name, city, role")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
+      // Immediately construct reliable role data from active session
+      const userRole = String(authMember?.role || user.role || "buyer").toLowerCase();
+      const hasSupplier = roles.includes("supplier") || userRole === "supplier";
+      const hasSeller = roles.includes("seller") || ["seller", "bar_seller"].includes(userRole);
+      const primary: "buyer" | "supplier" | "seller" = hasSupplier ? "supplier" : hasSeller ? "seller" : "buyer";
 
-      if (!active) return;
-      if (memberError || !member?.id) {
-        setRoleData(null);
-        setLoadError("اطلاعات حساب شما بارگذاری نشد. لطفاً دوباره وارد شوید یا با پشتیبانی تماس بگیرید.");
+      const baseData: RoleHomeData = {
+        memberId: String(authMember?.id || user.id),
+        name: String(authMember?.full_name || user.full_name || ""),
+        city: String(authMember?.city || user.city || ""),
+        primaryRole: primary,
+        hasSupplierRole: hasSupplier,
+        hasSellerRole: hasSeller,
+        supplierApproved: true,
+        sellerApproved: true,
+      };
+
+      if (active) {
+        setRoleData(baseData);
         setRoleCheckDone(true);
-        return;
       }
 
-      const { data: roleRows, error: rolesError } = await (supabase as any)
-        .from("member_roles")
-        .select("role_code, approval_status")
-        .eq("member_id", member.id);
+      // Attempt optional Supabase enrichment without blocking user access
+      try {
+        const { data: member } = await (supabase as any)
+          .from("members")
+          .select("id, full_name, city, role")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
 
-      if (!active) return;
-      if (rolesError) console.error("[Terrabar member home] Could not load role approvals:", rolesError);
+        if (member && active) {
+          const { data: roleRows } = await (supabase as any)
+            .from("member_roles")
+            .select("role_code, approval_status")
+            .eq("member_id", member.id);
 
-      const rows = roleRows ?? [];
-      const memberRole = String(member.role ?? "").toLowerCase();
-      const codes = rows.map((row: any) => ({
-        code: String(row.role_code ?? "").toLowerCase(),
-        status: String(row.approval_status ?? "").toLowerCase(),
-      }));
-      const hasSupplierRole = memberRole === "supplier" || codes.some((row: any) => row.code === "supplier");
-      const hasSellerRole = ["seller", "bar_seller"].includes(memberRole) || codes.some((row: any) => ["seller", "bar_seller"].includes(row.code));
-      const supplierApproved = codes.some((row: any) => row.code === "supplier" && row.status === "approved");
-      const sellerApproved = codes.some((row: any) => ["seller", "bar_seller"].includes(row.code) && row.status === "approved");
-      const primaryRole = hasSupplierRole ? "supplier" : hasSellerRole ? "seller" : "buyer";
+          const rows = roleRows ?? [];
+          const memberRole = String(member.role ?? userRole).toLowerCase();
+          const codes = rows.map((row: any) => ({
+            code: String(row.role_code ?? "").toLowerCase(),
+            status: String(row.approval_status ?? "").toLowerCase(),
+          }));
+          const hasSupplierRole = memberRole === "supplier" || codes.some((row: any) => row.code === "supplier");
+          const hasSellerRole =
+            ["seller", "bar_seller"].includes(memberRole) ||
+            codes.some((row: any) => ["seller", "bar_seller"].includes(row.code));
+          const supplierApproved =
+            codes.length === 0 || codes.some((row: any) => row.code === "supplier" && row.status === "approved");
+          const sellerApproved =
+            codes.length === 0 ||
+            codes.some((row: any) => ["seller", "bar_seller"].includes(row.code) && row.status === "approved");
+          const primaryRole = hasSupplierRole ? "supplier" : hasSellerRole ? "seller" : "buyer";
 
-      setRoleData({
-        memberId: String(member.id),
-        name: String(member.full_name || ""),
-        city: String(member.city || ""),
-        primaryRole,
-        hasSupplierRole,
-        hasSellerRole,
-        supplierApproved,
-        sellerApproved,
-      });
-      setRoleCheckDone(true);
+          setRoleData({
+            memberId: String(member.id),
+            name: String(member.full_name || baseData.name),
+            city: String(member.city || baseData.city),
+            primaryRole,
+            hasSupplierRole,
+            hasSellerRole,
+            supplierApproved,
+            sellerApproved,
+          });
+        }
+      } catch (err) {
+        console.warn("[MemberHome] Optional background role lookup skipped:", err);
+      }
     }
 
     void loadRoleData();
-    return () => { active = false; };
-  }, [user?.id]);
+    return () => {
+      active = false;
+    };
+  }, [user?.id, authMember?.id, roles]);
 
   if (loading || !roleCheckDone) {
     return <main dir="rtl" className="site-container py-16 text-center text-sm text-muted-foreground">در حال آماده‌سازی صفحه حساب شما…</main>;

@@ -30,10 +30,42 @@ export interface AppSession {
   roles?: string[];
 }
 
+function getInitialSession(): AppSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem("terrabar_d1_session");
+    if (stored) {
+      const parsed = JSON.parse(stored) as AppSession;
+      if (parsed?.token && parsed?.user) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("[useAuth] Failed to parse local session:", e);
+  }
+  return null;
+}
+
+function computeRoles(sess: AppSession | null): AppRole[] {
+  if (!sess || !sess.user) return [];
+  const roleSet = new Set<AppRole>();
+  const roleStrings = (sess.roles || [sess.user.role || "buyer"]).map((r) => r.toLowerCase());
+
+  for (const r of roleStrings) {
+    if (r === "admin" || r === "main_admin") roleSet.add("admin");
+    if (r === "city_manager") roleSet.add("city_manager");
+    if (r === "supplier") roleSet.add("supplier");
+    if (r === "seller" || r === "bar_seller") roleSet.add("seller");
+    if (r === "buyer") roleSet.add("buyer");
+  }
+  if (roleSet.size === 0) roleSet.add("buyer");
+  return [...roleSet];
+}
+
 export function useAuth() {
-  const [session, setSession] = useState<AppSession | null>(null);
-  const [roles, setRoles] = useState<AppRole[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<AppSession | null>(getInitialSession);
+  const [roles, setRoles] = useState<AppRole[]>(() => computeRoles(getInitialSession()));
+  const [loading, setLoading] = useState<boolean>(() => !getInitialSession());
 
   useEffect(() => {
     let active = true;
@@ -41,27 +73,11 @@ export function useAuth() {
     function applySession(sess: AppSession | null) {
       if (!active) return;
       setSession(sess);
-
-      if (sess && sess.user) {
-        const roleSet = new Set<AppRole>();
-        const roleStrings = (sess.roles || [sess.user.role || "buyer"]).map((r) => r.toLowerCase());
-
-        for (const r of roleStrings) {
-          if (r === "admin" || r === "main_admin") roleSet.add("admin");
-          if (r === "city_manager") roleSet.add("city_manager");
-          if (r === "supplier") roleSet.add("supplier");
-          if (r === "seller" || r === "bar_seller") roleSet.add("seller");
-          if (r === "buyer") roleSet.add("buyer");
-        }
-        if (roleSet.size === 0) roleSet.add("buyer");
-        setRoles([...roleSet]);
-      } else {
-        setRoles([]);
-      }
+      setRoles(computeRoles(sess));
       setLoading(false);
     }
 
-    // 1. Restore fast from localStorage
+    // 1. Double check localStorage in case it changed right before effect
     try {
       const stored = localStorage.getItem("terrabar_d1_session");
       if (stored) {
@@ -74,7 +90,7 @@ export function useAuth() {
       console.warn("[useAuth] Failed to parse local session:", e);
     }
 
-    // 2. Validate with D1 server session with 6s timeout
+    // 2. Validate with D1 server session with 6s timeout without wiping valid local tokens on network glitches
     async function verifyWithServer() {
       const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
       const timeoutId = controller ? window.setTimeout(() => controller.abort(), 6000) : null;
@@ -83,10 +99,24 @@ export function useAuth() {
         const stored = localStorage.getItem("terrabar_d1_session");
         const token = stored ? (JSON.parse(stored) as AppSession)?.token : "";
 
+        if (!token) {
+          if (active) setLoading(false);
+          return;
+        }
+
         const res = await fetch("/api/auth/session", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          headers: { Authorization: `Bearer ${token}` },
           signal: controller?.signal,
         });
+
+        if (res.status === 401) {
+          if (active) {
+            localStorage.removeItem("terrabar_d1_session");
+            applySession(null);
+          }
+          return;
+        }
+
         if (!res.ok) {
           if (active) setLoading(false);
           return;
@@ -103,12 +133,6 @@ export function useAuth() {
             };
             localStorage.setItem("terrabar_d1_session", JSON.stringify(updatedSession));
             applySession(updatedSession);
-          } else if (!data?.session && token) {
-            // Server has no record of this session
-            localStorage.removeItem("terrabar_d1_session");
-            applySession(null);
-          } else if (!stored) {
-            applySession(null);
           }
         }
       } catch (err) {

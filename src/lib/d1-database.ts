@@ -679,7 +679,8 @@ export async function registerOrLoginUserWithEmail(
   const rawPassword = payload.password?.trim() || "";
   const passwordHash = rawPassword ? Buffer.from(rawPassword).toString("base64") : "";
   const fullName = payload.fullName?.trim() || email.split("@")[0] || "کاربر ترابار";
-  const phone = payload.phone?.trim() || "";
+  const rawPhone = payload.phone?.trim() || "";
+  const phone = rawPhone || null;
   const city = payload.city?.trim() || "";
   const province = payload.province?.trim() || "";
   const role = payload.role?.trim() || "buyer";
@@ -697,7 +698,7 @@ export async function registerOrLoginUserWithEmail(
   let userCity: string;
   let userProvince: string;
   let userRole: string;
-  let userPhone: string;
+  let userPhone: string | null;
 
   if (existingUser) {
     if (mode === "login" && existingUser.password_hash && passwordHash) {
@@ -711,14 +712,14 @@ export async function registerOrLoginUserWithEmail(
     userCity = city || existingUser.city;
     userProvince = province || existingUser.province;
     userRole = role || existingUser.role;
-    userPhone = phone || existingUser.phone || "";
+    userPhone = phone || existingUser.phone || null;
 
     const updatedHash = passwordHash || existingUser.password_hash || "";
     await db
       .prepare(
-        "UPDATE users SET full_name = ?, city = ?, province = ?, role = ?, activity = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        "UPDATE users SET full_name = ?, city = ?, province = ?, role = ?, activity = ?, password_hash = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       )
-      .bind(userFullName, userCity, userProvince, userRole, activity, updatedHash, userId)
+      .bind(userFullName, userCity, userProvince, userRole, activity, updatedHash, userPhone, userId)
       .run();
   } else {
     if (mode === "login" && !rawPassword) {

@@ -195,8 +195,8 @@ function AuthPage() {
 
       window.setTimeout(() => {
         if (safeNext) window.location.assign(safeNext);
-        else void navigate({ to: "/member-home" });
-      }, 700);
+        else window.location.assign("/member-home");
+      }, 400);
     } catch (err) {
       console.error("[Terrabar auth] verifyCode failed:", err);
       setError("خطا در برقراری ارتباط با سرور. لطفاً دوباره تلاش کنید.");
@@ -288,7 +288,12 @@ function AuthPage() {
 
         window.dispatchEvent(
           new CustomEvent("terrabar-auth-change", {
-            detail: { token: data.sessionToken, user: data.user },
+            detail: {
+              token: data.sessionToken,
+              user: data.user,
+              member: data.member,
+              roles: data.roles || ["buyer"],
+            },
           }),
         );
       }
@@ -307,8 +312,8 @@ function AuthPage() {
 
       window.setTimeout(() => {
         if (safeNext) window.location.assign(safeNext);
-        else void navigate({ to: "/member-home" });
-      }, 700);
+        else window.location.assign("/member-home");
+      }, 400);
     } catch (err) {
       console.error("[Terrabar auth] handleEmailAuth failed:", err);
       setError("خطا در برقراری ارتباط با سرور. لطفاً دوباره تلاش کنید.");

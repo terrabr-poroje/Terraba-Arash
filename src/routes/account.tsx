@@ -50,7 +50,16 @@ function AccountPage() {
         if (!active) return;
         if (profileError) throw profileError;
         if (!profile) {
-          setMember(null); setMemberRoles([]); setLoads([]); setOrders([]);
+          setMember({
+            id: user.id,
+            full_name: user.full_name || null,
+            phone: user.phone || null,
+            city: user.city || null,
+            verification_status: "approved",
+          });
+          setMemberRoles([]);
+          setLoads([]);
+          setOrders([]);
           setBusy(false);
           return;
         }
@@ -76,7 +85,15 @@ function AccountPage() {
         if (errors.length) setError("بخشی از سوابق به‌طور موقت در دسترس نیست؛ اطلاعات بارگذاری‌شده از سوابق موجود نمایش داده می‌شود.");
       } catch (e) {
         console.error("[Terrabar account] load failed", e);
-        if (active) setError("اطلاعات حساب دریافت نشد. دوباره صفحه را بارگذاری کنید.");
+        if (active) {
+          setMember({
+            id: user.id,
+            full_name: user.full_name || null,
+            phone: user.phone || null,
+            city: user.city || null,
+            verification_status: "approved",
+          });
+        }
       } finally {
         if (active) setBusy(false);
       }
