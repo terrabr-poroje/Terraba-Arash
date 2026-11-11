@@ -390,6 +390,7 @@ export interface UserRegistrationPayload {
   province?: string;
   role?: string;
   activity?: string;
+  mode?: "login" | "signup";
 }
 
 export interface UserAuthResult {
@@ -500,11 +501,12 @@ export async function registerOrLoginUserWithPhone(
       .bind(userFullName, userCity, userProvince, userRole, memberId)
       .run();
   } else {
+    const initialVerification = payload.mode === "signup" ? "pending" : "approved";
     memberId = `mem_${Date.now()}_${cleanPhone.slice(-4)}`;
     await db
       .prepare(
         `INSERT INTO members (id, auth_user_id, full_name, phone, email, city, province, role, verification_status, products, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       )
       .bind(
         memberId,
@@ -515,45 +517,49 @@ export async function registerOrLoginUserWithPhone(
         userCity,
         userProvince,
         userRole,
+        initialVerification,
         activity,
       )
       .run();
   }
 
-  // 3. Ensure member roles in D1 (Supplier and Seller require admin approval)
+  // 3. Ensure member roles in D1 (Save request for Admin review at registration or when pending)
   const assignedRoles: string[] = ["buyer"];
-  if (userRole === "seller" || userRole === "bar_seller") {
-    const existing = await db
-      .prepare("SELECT approval_status FROM member_roles WHERE member_id = ? AND (role_code = 'seller' OR role_code = 'bar_seller') LIMIT 1")
-      .bind(memberId)
-      .first<{ approval_status: string }>();
+  const isSignup = payload.mode === "signup";
+  const normalizedRole = userRole === "bar_seller" ? "seller" : userRole || "buyer";
+  const roleTitle = normalizedRole === "seller" ? "بارفروش / حجره‌دار" : normalizedRole === "supplier" ? "تأمین‌کننده" : "خریدار";
+  const regNote = activity || (isSignup ? `ثبت‌نام جدید در ترابار با نقش ${roleTitle}` : `درخواست عضویت ${roleTitle}`);
 
-    if (existing?.approval_status === "approved") {
-      assignedRoles.push("seller");
-    } else if (!existing) {
-      const roleId = `role_${Date.now()}_seller`;
+  const existingRole = await db
+    .prepare("SELECT * FROM member_roles WHERE member_id = ? AND (role_code = ? OR (role_code IN ('seller', 'bar_seller') AND ? IN ('seller', 'bar_seller'))) LIMIT 1")
+    .bind(memberId, normalizedRole, normalizedRole)
+    .first<any>();
+
+  if (isSignup) {
+    // When signing up, ALWAYS submit/reset request to pending so admin sees it in the dashboard
+    if (existingRole) {
       await db
-        .prepare(
-          "INSERT OR IGNORE INTO member_roles (id, member_id, role_code, approval_status, created_at) VALUES (?, ?, 'seller', 'pending', CURRENT_TIMESTAMP)",
-        )
-        .bind(roleId, memberId)
+        .prepare("UPDATE member_roles SET approval_status = 'pending', request_note = ?, approved_at = NULL, created_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(regNote, existingRole.id)
+        .run();
+    } else {
+      const roleId = `role_${Date.now()}_${normalizedRole}`;
+      await db
+        .prepare("INSERT INTO member_roles (id, member_id, role_code, approval_status, request_note, created_at) VALUES (?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)")
+        .bind(roleId, memberId, normalizedRole, regNote)
         .run();
     }
-  } else if (userRole === "supplier") {
-    const existing = await db
-      .prepare("SELECT approval_status FROM member_roles WHERE member_id = ? AND role_code = 'supplier' LIMIT 1")
-      .bind(memberId)
-      .first<{ approval_status: string }>();
-
-    if (existing?.approval_status === "approved") {
-      assignedRoles.push("supplier");
-    } else if (!existing) {
-      const roleId = `role_${Date.now()}_supplier`;
+    await db.prepare("UPDATE members SET verification_status = 'pending' WHERE id = ?").bind(memberId).run();
+  } else {
+    // Normal login: preserve existing approved roles, or create pending request if none exists
+    if (existingRole?.approval_status === "approved") {
+      if (normalizedRole === "seller" && !assignedRoles.includes("seller")) assignedRoles.push("seller");
+      if (normalizedRole === "supplier" && !assignedRoles.includes("supplier")) assignedRoles.push("supplier");
+    } else if (!existingRole) {
+      const roleId = `role_${Date.now()}_${normalizedRole}`;
       await db
-        .prepare(
-          "INSERT OR IGNORE INTO member_roles (id, member_id, role_code, approval_status, created_at) VALUES (?, ?, 'supplier', 'pending', CURRENT_TIMESTAMP)",
-        )
-        .bind(roleId, memberId)
+        .prepare("INSERT INTO member_roles (id, member_id, role_code, approval_status, request_note, created_at) VALUES (?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)")
+        .bind(roleId, memberId, normalizedRole, regNote)
         .run();
     }
   }
@@ -815,11 +821,12 @@ export async function registerOrLoginUserWithEmail(
       .bind(userFullName, userCity, userProvince, userRole, memberId)
       .run();
   } else {
+    const initialVerification = mode === "signup" ? "pending" : "approved";
     memberId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     await db
       .prepare(
         `INSERT INTO members (id, auth_user_id, full_name, phone, email, city, province, role, verification_status, products, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
       )
       .bind(
         memberId,
@@ -830,45 +837,47 @@ export async function registerOrLoginUserWithEmail(
         userCity,
         userProvince,
         userRole,
+        initialVerification,
         activity,
       )
       .run();
   }
 
-  // Assign roles (Supplier and Seller require admin approval)
+  // Assign roles (Save request for Admin review at registration or when pending)
   const assignedRoles: string[] = ["buyer"];
-  if (userRole === "seller" || userRole === "bar_seller") {
-    const existing = await db
-      .prepare("SELECT approval_status FROM member_roles WHERE member_id = ? AND (role_code = 'seller' OR role_code = 'bar_seller') LIMIT 1")
-      .bind(memberId)
-      .first<{ approval_status: string }>();
+  const isSignup = mode === "signup";
+  const normalizedRole = userRole === "bar_seller" ? "seller" : userRole || "buyer";
+  const roleTitle = normalizedRole === "seller" ? "بارفروش / حجره‌دار" : normalizedRole === "supplier" ? "تأمین‌کننده" : "خریدار";
+  const regNote = activity || (isSignup ? `ثبت‌نام جدید در ترابار با ایمیل (${roleTitle})` : `درخواست عضویت ${roleTitle}`);
 
-    if (existing?.approval_status === "approved") {
-      assignedRoles.push("seller");
-    } else if (!existing) {
-      const roleId = `role_${Date.now()}_seller`;
+  const existingRole = await db
+    .prepare("SELECT * FROM member_roles WHERE member_id = ? AND (role_code = ? OR (role_code IN ('seller', 'bar_seller') AND ? IN ('seller', 'bar_seller'))) LIMIT 1")
+    .bind(memberId, normalizedRole, normalizedRole)
+    .first<any>();
+
+  if (isSignup) {
+    if (existingRole) {
       await db
-        .prepare(
-          "INSERT OR IGNORE INTO member_roles (id, member_id, role_code, approval_status, created_at) VALUES (?, ?, 'seller', 'pending', CURRENT_TIMESTAMP)",
-        )
-        .bind(roleId, memberId)
+        .prepare("UPDATE member_roles SET approval_status = 'pending', request_note = ?, approved_at = NULL, created_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(regNote, existingRole.id)
+        .run();
+    } else {
+      const roleId = `role_${Date.now()}_${normalizedRole}`;
+      await db
+        .prepare("INSERT INTO member_roles (id, member_id, role_code, approval_status, request_note, created_at) VALUES (?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)")
+        .bind(roleId, memberId, normalizedRole, regNote)
         .run();
     }
-  } else if (userRole === "supplier") {
-    const existing = await db
-      .prepare("SELECT approval_status FROM member_roles WHERE member_id = ? AND role_code = 'supplier' LIMIT 1")
-      .bind(memberId)
-      .first<{ approval_status: string }>();
-
-    if (existing?.approval_status === "approved") {
-      assignedRoles.push("supplier");
-    } else if (!existing) {
-      const roleId = `role_${Date.now()}_supplier`;
+    await db.prepare("UPDATE members SET verification_status = 'pending' WHERE id = ?").bind(memberId).run();
+  } else {
+    if (existingRole?.approval_status === "approved") {
+      if (normalizedRole === "seller" && !assignedRoles.includes("seller")) assignedRoles.push("seller");
+      if (normalizedRole === "supplier" && !assignedRoles.includes("supplier")) assignedRoles.push("supplier");
+    } else if (!existingRole) {
+      const roleId = `role_${Date.now()}_${normalizedRole}`;
       await db
-        .prepare(
-          "INSERT OR IGNORE INTO member_roles (id, member_id, role_code, approval_status, created_at) VALUES (?, ?, 'supplier', 'pending', CURRENT_TIMESTAMP)",
-        )
-        .bind(roleId, memberId)
+        .prepare("INSERT INTO member_roles (id, member_id, role_code, approval_status, request_note, created_at) VALUES (?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)")
+        .bind(roleId, memberId, normalizedRole, regNote)
         .run();
     }
   }
@@ -959,11 +968,12 @@ export async function getPendingRoleRequests(): Promise<any[]> {
           mr.role_code,
           mr.approval_status,
           mr.created_at,
+          mr.request_note,
           m.full_name as member_name,
           m.phone as member_phone,
           m.city as member_city,
           m.province as member_province,
-          m.products as activity
+          COALESCE(mr.request_note, m.products, 'ثبت‌نام جدید') as activity
         FROM member_roles mr
         LEFT JOIN members m ON mr.member_id = m.id
         WHERE mr.approval_status = 'pending'
@@ -973,6 +983,142 @@ export async function getPendingRoleRequests(): Promise<any[]> {
     return rows.results || [];
   } catch (err) {
     console.warn("[d1] getPendingRoleRequests error:", err);
+    return [];
+  }
+}
+
+export interface MembershipRequestPayload {
+  userId?: string;
+  memberId?: string;
+  fullName?: string;
+  phone?: string;
+  province?: string;
+  city?: string;
+  role: string;
+  description?: string;
+}
+
+export async function submitMembershipRequest(payload: MembershipRequestPayload): Promise<{
+  success: boolean;
+  message: string;
+  requestId?: string;
+}> {
+  try {
+    await initD1Schema();
+    const db = getD1();
+
+    const rawRole = (payload.role || "buyer").trim();
+    const roleCode = rawRole === "bar_seller" ? "seller" : rawRole;
+    const description = payload.description?.trim() || "";
+
+    let member: any = null;
+    if (payload.memberId) {
+      member = await db.prepare("SELECT * FROM members WHERE id = ? LIMIT 1").bind(payload.memberId).first<any>();
+    }
+    if (!member && payload.userId) {
+      member = await db.prepare("SELECT * FROM members WHERE auth_user_id = ? LIMIT 1").bind(payload.userId).first<any>();
+    }
+
+    const fullName = payload.fullName?.trim() || member?.full_name || "کاربر ترابار";
+    const phone = payload.phone?.trim() || member?.phone || "";
+    const city = payload.city?.trim() || member?.city || "کرج";
+    const province = payload.province?.trim() || member?.province || "البرز";
+
+    let memberId: string;
+    if (member) {
+      memberId = member.id;
+      await db
+        .prepare(
+          "UPDATE members SET full_name = ?, phone = ?, city = ?, province = ?, role = ?, products = COALESCE(?, products), verification_status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(fullName, phone, city, province, roleCode, description || null, memberId)
+        .run();
+    } else {
+      memberId = `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      await db
+        .prepare(
+          `INSERT INTO members (id, auth_user_id, full_name, phone, city, province, role, verification_status, products, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        )
+        .bind(
+          memberId,
+          payload.userId || `usr_${Date.now()}`,
+          fullName,
+          phone,
+          city,
+          province,
+          roleCode,
+          description || null,
+        )
+        .run();
+    }
+
+    const roleTitle = roleCode === "seller" ? "بارفروش / حجره‌دار" : roleCode === "supplier" ? "تأمین‌کننده" : "خریدار";
+    const requestNote = description || `درخواست عضویت در نقش ${roleTitle}`;
+
+    const existingRole = await db
+      .prepare(
+        "SELECT * FROM member_roles WHERE member_id = ? AND (role_code = ? OR (role_code IN ('seller', 'bar_seller') AND ? IN ('seller', 'bar_seller'))) LIMIT 1",
+      )
+      .bind(memberId, roleCode, roleCode)
+      .first<any>();
+
+    let requestId: string;
+    if (existingRole) {
+      requestId = existingRole.id;
+      await db
+        .prepare(
+          "UPDATE member_roles SET approval_status = 'pending', approved_at = NULL, request_note = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(requestNote, existingRole.id)
+        .run();
+    } else {
+      requestId = `role_${Date.now()}_${roleCode}`;
+      await db
+        .prepare(
+          "INSERT INTO member_roles (id, member_id, role_code, approval_status, request_note, created_at) VALUES (?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP)",
+        )
+        .bind(requestId, memberId, roleCode, requestNote)
+        .run();
+    }
+
+    await db.prepare("UPDATE members SET verification_status = 'pending' WHERE id = ?").bind(memberId).run();
+
+    return {
+      success: true,
+      message: "درخواست شما با موفقیت در پایگاه داده ثبت شد و برای بررسی مدیر ارسال گردید.",
+      requestId,
+    };
+  } catch (err: any) {
+    console.error("[d1] submitMembershipRequest error:", err);
+    return { success: false, message: "خطا در ثبت درخواست در پایگاه داده: " + (err?.message || err) };
+  }
+}
+
+export async function getMyRoleRequests(userIdOrMemberId: string): Promise<any[]> {
+  try {
+    await initD1Schema();
+    const db = getD1();
+    const rows = await db
+      .prepare(`
+        SELECT 
+          mr.id,
+          mr.member_id,
+          mr.role_code,
+          mr.approval_status,
+          mr.request_note,
+          mr.created_at,
+          mr.approved_at
+        FROM member_roles mr
+        INNER JOIN members m ON mr.member_id = m.id
+        WHERE m.auth_user_id = ? OR m.id = ?
+        ORDER BY mr.created_at DESC
+      `)
+      .bind(userIdOrMemberId, userIdOrMemberId)
+      .all<any>();
+    return rows.results || [];
+  } catch (err) {
+    console.error("[d1] getMyRoleRequests error:", err);
     return [];
   }
 }

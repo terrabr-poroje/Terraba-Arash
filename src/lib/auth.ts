@@ -30,21 +30,6 @@ export interface AppSession {
   roles?: string[];
 }
 
-function getInitialSession(): AppSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = localStorage.getItem("terrabar_d1_session");
-    if (stored) {
-      const parsed = JSON.parse(stored) as AppSession;
-      if (parsed?.token && parsed?.user) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.warn("[useAuth] Failed to parse local session:", e);
-  }
-  return null;
-}
 
 function computeRoles(sess: AppSession | null): AppRole[] {
   if (!sess || !sess.user) return [];
@@ -63,9 +48,10 @@ function computeRoles(sess: AppSession | null): AppRole[] {
 }
 
 export function useAuth() {
-  const [session, setSession] = useState<AppSession | null>(getInitialSession);
-  const [roles, setRoles] = useState<AppRole[]>(() => computeRoles(getInitialSession()));
-  const [loading, setLoading] = useState<boolean>(() => !getInitialSession());
+  // Always initialize as null on initial render to guarantee 100% parity with SSR HTML
+  const [session, setSession] = useState<AppSession | null>(null);
+  const [roles, setRoles] = useState<AppRole[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     let active = true;
@@ -77,17 +63,22 @@ export function useAuth() {
       setLoading(false);
     }
 
-    // 1. Double check localStorage in case it changed right before effect
+    // 1. Read localStorage on client strictly after hydration
     try {
       const stored = localStorage.getItem("terrabar_d1_session");
       if (stored) {
         const parsed = JSON.parse(stored) as AppSession;
         if (parsed?.token && parsed?.user) {
           applySession(parsed);
+        } else {
+          setLoading(false);
         }
+      } else {
+        setLoading(false);
       }
     } catch (e) {
       console.warn("[useAuth] Failed to parse local session:", e);
+      setLoading(false);
     }
 
     // 2. Validate with D1 server session with 6s timeout without wiping valid local tokens on network glitches

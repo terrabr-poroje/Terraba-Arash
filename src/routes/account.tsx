@@ -78,7 +78,29 @@ function AccountPage() {
             .order("created_at", { ascending: false }).limit(50),
         ]);
         if (!active) return;
-        setMemberRoles((roleResult.data ?? []) as MemberRole[]);
+        let fetchedRoles: MemberRole[] = (roleResult.data ?? []) as MemberRole[];
+        try {
+          const reqRes = await fetch(`/api/membership/my-requests?userId=${encodeURIComponent(user.id)}`);
+          const reqJson = await reqRes.json().catch(() => ({}));
+          if (reqJson?.requests && Array.isArray(reqJson.requests) && reqJson.requests.length) {
+            const map = new Map<string, MemberRole>();
+            for (const r of reqJson.requests) {
+              map.set(r.role_code, {
+                id: r.id,
+                role_code: r.role_code,
+                approval_status: r.approval_status,
+                created_at: r.created_at,
+              });
+            }
+            for (const r of fetchedRoles) {
+              if (!map.has(r.role_code)) map.set(r.role_code, r);
+            }
+            fetchedRoles = Array.from(map.values());
+          }
+        } catch {
+          // Keep fetchedRoles
+        }
+        setMemberRoles(fetchedRoles);
         setLoads((loadResult.data ?? []) as Load[]);
         setOrders((orderResult.data ?? []) as Order[]);
         const errors = [roleResult.error, loadResult.error, orderResult.error].filter(Boolean);

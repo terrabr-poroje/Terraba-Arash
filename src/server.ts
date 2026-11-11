@@ -14,6 +14,8 @@ import {
   setAdminPassword,
   getPendingRoleRequests,
   updateRoleApprovalStatus,
+  submitMembershipRequest,
+  getMyRoleRequests,
   resubmitSellingApprovalRequest,
   getMemberSellingStatus,
   ADMIN_PHONE_FOR_OTP,
@@ -203,6 +205,7 @@ export default {
             province: body?.province,
             role: body?.role,
             activity: body?.activity,
+            mode: body?.mode,
           });
 
           return new Response(
@@ -531,6 +534,61 @@ export default {
         } catch (e: any) {
           return new Response(
             JSON.stringify({ success: false, message: e?.message || "خطا در ارسال درخواست به مدیر" }),
+            { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+      }
+
+      // Submit membership or role request to admin and save in D1 database
+      if (url.pathname === "/api/membership/submit-request" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as {
+            userId?: string;
+            memberId?: string;
+            fullName?: string;
+            phone?: string;
+            province?: string;
+            city?: string;
+            role?: string;
+            description?: string;
+          };
+          const result = await submitMembershipRequest({
+            userId: body.userId,
+            memberId: body.memberId,
+            fullName: body.fullName,
+            phone: body.phone,
+            province: body.province,
+            city: body.city,
+            role: body.role || "buyer",
+            description: body.description,
+          });
+          return new Response(JSON.stringify(result), {
+            status: result.success ? 200 : 400,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در ثبت درخواست در پایگاه داده" }),
+            { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+      }
+
+      // Get user's own role requests from D1
+      if (url.pathname === "/api/membership/my-requests" && request.method === "GET") {
+        try {
+          const userId = url.searchParams.get("userId") || "";
+          const requests = await getMyRoleRequests(userId);
+          return new Response(JSON.stringify({ success: true, requests }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
+          });
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, requests: [], message: e?.message || "خطا در دریافت درخواست‌ها" }),
             { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
           );
         }

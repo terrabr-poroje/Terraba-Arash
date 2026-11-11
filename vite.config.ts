@@ -74,6 +74,7 @@ function smsDevApiPlugin(): Plugin {
                 province: parsed.province,
                 role: parsed.role,
                 activity: parsed.activity,
+                mode: parsed.mode,
               });
 
               res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -362,6 +363,63 @@ function smsDevApiPlugin(): Plugin {
               res.end(JSON.stringify({ success: false, message: err?.message || "خطا در ارسال درخواست به مدیر" }));
             }
           });
+          return;
+        }
+
+        // Submit membership or role request to admin and save in D1 database in dev
+        if (req.method === "POST" && req.url === "/api/membership/submit-request") {
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk;
+          });
+          req.on("end", async () => {
+            try {
+              const parsed = JSON.parse(body || "{}");
+              const { submitMembershipRequest } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+                submitMembershipRequest: (p: any) => Promise<any>;
+              };
+              const result = await submitMembershipRequest({
+                userId: parsed.userId,
+                memberId: parsed.memberId,
+                fullName: parsed.fullName,
+                phone: parsed.phone,
+                province: parsed.province,
+                city: parsed.city,
+                role: parsed.role || "buyer",
+                description: parsed.description,
+              });
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = result.success ? 200 : 400;
+              res.end(JSON.stringify(result));
+            } catch (err: any) {
+              console.error("[dev submit-request error]", err);
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, message: err?.message || "خطا در ثبت درخواست در پایگاه داده" }));
+            }
+          });
+          return;
+        }
+
+        // Get user's own role requests in dev
+        if (req.method === "GET" && req.url?.startsWith("/api/membership/my-requests")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost:3000");
+            const userId = urlObj.searchParams.get("userId") || "";
+            const { getMyRoleRequests } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+              getMyRoleRequests: (u: string) => Promise<any[]>;
+            };
+            const requests = await getMyRoleRequests(userId);
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, requests }));
+          } catch (err: any) {
+            console.error("[dev my-requests error]", err);
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, requests: [], message: err?.message || "خطا در دریافت درخواست‌ها" }));
+          }
           return;
         }
 

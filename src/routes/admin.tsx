@@ -86,7 +86,7 @@ function AdminPage() {
           role_code: r.role_code,
           approval_status: r.approval_status,
           created_at: r.created_at,
-          request_note: r.activity || null,
+          request_note: r.request_note || r.activity || null,
           members: {
             full_name: r.member_name || 'کاربر بدون نام',
             phone: r.member_phone || '—',

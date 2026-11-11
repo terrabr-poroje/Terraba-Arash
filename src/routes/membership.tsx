@@ -38,8 +38,40 @@ function MembershipPage() {
 
   function refresh() {
     if (!user) return;
-    (supabase as any).from('member_roles').select('id, role_code, approval_status, created_at, request_note, members!inner(auth_user_id)').eq('members.auth_user_id', user.id).order('created_at', { ascending: false })
-      .then(({ data }: { data: unknown }) => setRequests((data ?? []) as unknown as Request[]));
+    fetch(`/api/membership/my-requests?userId=${encodeURIComponent(user.id)}`)
+      .then(res => res.json())
+      .then(json => {
+        const serverRequests: Request[] = (json?.requests ?? []).map((r: any) => ({
+          id: r.id,
+          role_code: r.role_code,
+          approval_status: r.approval_status,
+          created_at: r.created_at,
+          request_note: r.request_note,
+        }));
+
+        (supabase as any)
+          .from('member_roles')
+          .select('id, role_code, approval_status, created_at, request_note, members!inner(auth_user_id)')
+          .eq('members.auth_user_id', user.id)
+          .order('created_at', { ascending: false })
+          .then(({ data }: { data: unknown }) => {
+            const combinedMap = new Map<string, Request>();
+            for (const item of serverRequests) combinedMap.set(item.id, item);
+            for (const item of ((data ?? []) as unknown as Request[])) combinedMap.set(item.id, item);
+            setRequests(Array.from(combinedMap.values()));
+          })
+          .catch(() => {
+            setRequests(serverRequests);
+          });
+      })
+      .catch(() => {
+        (supabase as any)
+          .from('member_roles')
+          .select('id, role_code, approval_status, created_at, request_note, members!inner(auth_user_id)')
+          .eq('members.auth_user_id', user.id)
+          .order('created_at', { ascending: false })
+          .then(({ data }: { data: unknown }) => setRequests((data ?? []) as unknown as Request[]));
+      });
   }
   useEffect(refresh, [user]);
 
@@ -50,17 +82,38 @@ function MembershipPage() {
     if (note.length > 500) { setError('متن توضیح حداکثر ۵۰۰ نویسه باشد.'); return; }
     setBusy(true);
     setError('');
-    const { error: updateError } = await (supabase as any)
-      .from('member_roles')
-      .update({ approval_status: 'pending', approved_by: null, approved_at: null, request_note: note })
-      .eq('id', request.id)
-      .eq('approval_status', 'rejected');
-    if (updateError) {
-      setError('ارسال مجدد انجام نشد. لطفاً دوباره تلاش کنید یا با مدیر تماس بگیرید.');
-    } else {
-      setResubmitNotes(current => ({ ...current, [request.id]: '' }));
-      refresh();
+
+    try {
+      const res = await fetch('/api/membership/submit-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          role: request.role_code,
+          description: note,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data?.success) {
+        setError(data?.message || 'ارسال مجدد انجام نشد. لطفاً دوباره تلاش کنید.');
+      } else {
+        setResubmitNotes(current => ({ ...current, [request.id]: '' }));
+        refresh();
+      }
+    } catch {
+      setError('خطا در برقراری ارتباط با سرور.');
     }
+
+    try {
+      await (supabase as any)
+        .from('member_roles')
+        .update({ approval_status: 'pending', approved_by: null, approved_at: null, request_note: note })
+        .eq('id', request.id)
+        .eq('approval_status', 'rejected');
+    } catch {
+      // Best effort
+    }
+
     setBusy(false);
   }
 
@@ -70,76 +123,65 @@ function MembershipPage() {
     if (!province.trim() || !city.trim()) { setError("استان و شهر محل فعالیت را انتخاب کنید."); return; }
     setBusy(true);
     setError('');
-    // Create or reuse the caller's member profile in the production schema.
-    const { data: existingMember, error: lookupError } = await (supabase as any)
-      .from('members').select('id').eq('auth_user_id', user.id).maybeSingle();
-
-    if (lookupError) {
-      setError('بررسی پروفایل انجام نشد؛ کمی بعد دوباره تلاش کنید.');
-      setBusy(false);
-      return;
-    }
-
-    let memberId = existingMember?.id;
-    if (!memberId) {
-      const { data: newMember, error: memberInsertError } = await (supabase as any)
-        .from('members')
-        .insert({ auth_user_id: user.id, full_name: fullName.trim(), phone: phone.trim(), city, role, verification_status: 'pending', products: description.trim() || null })
-        .select('id')
-        .single();
-      if (memberInsertError || !newMember) {
-        setError('ساخت پروفایل انجام نشد؛ اطلاعات را بررسی کنید یا با مدیر تماس بگیرید.');
-        setBusy(false);
-        return;
-      }
-      memberId = newMember.id;
-    }
 
     const requestedRoleCode = roleToCode[role] ?? role;
-    const { data: existingRequest, error: requestLookupError } = await (supabase as any)
-      .from('member_roles')
-      .select('id, approval_status')
-      .eq('member_id', memberId)
-      .eq('role_code', requestedRoleCode)
-      .maybeSingle();
 
-    if (requestLookupError) {
-      setError('بررسی درخواست قبلی انجام نشد؛ کمی بعد دوباره تلاش کنید.');
-      setBusy(false);
-      return;
-    }
-
-    if (existingRequest?.approval_status === 'rejected') {
-      const { error: resubmitError } = await (supabase as any)
-        .from('member_roles')
-        .update({ approval_status: 'pending', approved_by: null, approved_at: null })
-        .eq('id', existingRequest.id)
-        .eq('approval_status', 'rejected');
-      if (resubmitError) {
-        setError('ارسال دوباره درخواست انجام نشد؛ کمی بعد تلاش کنید.');
-      } else {
-        setSaved(true);
-        refresh();
-      }
-    } else if (existingRequest) {
-      setError(existingRequest.approval_status === 'approved'
-        ? 'این نقش قبلاً تأیید شده است.'
-        : 'درخواست این نقش قبلاً ثبت شده و در انتظار بررسی است.');
-    } else {
-      const { error: roleInsertError } = await (supabase as any).from('member_roles').insert({
-        member_id: memberId,
-        role_code: requestedRoleCode,
-        approval_status: 'pending',
-        approved_by: null,
-        approved_at: null,
+    // 1. Save directly to D1 database and notify admin
+    try {
+      const res = await fetch('/api/membership/submit-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          role: requestedRoleCode,
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          province,
+          city,
+          description: description.trim(),
+        }),
       });
-      if (roleInsertError) {
-        setError(roleInsertError.code === '23505' ? 'این درخواست نقش قبلاً ثبت شده است.' : 'ثبت درخواست عضویت انجام نشد؛ دوباره تلاش کنید.');
-      } else {
+
+      const data = await res.json().catch(() => ({}));
+      if (data?.success) {
         setSaved(true);
         refresh();
+      } else {
+        setError(data?.message || 'ثبت درخواست عضویت انجام نشد؛ دوباره تلاش کنید.');
       }
+    } catch {
+      setError('خطا در ثبت درخواست در پایگاه داده؛ دوباره تلاش نمایید.');
     }
+
+    // 2. Best-effort Supabase sync for backward compatibility
+    try {
+      const { data: existingMember } = await (supabase as any)
+        .from('members').select('id').eq('auth_user_id', user.id).maybeSingle();
+
+      let memberId = existingMember?.id;
+      if (!memberId) {
+        const { data: newMember } = await (supabase as any)
+          .from('members')
+          .insert({ auth_user_id: user.id, full_name: fullName.trim(), phone: phone.trim(), city, role, verification_status: 'pending', products: description.trim() || null })
+          .select('id')
+          .single();
+        memberId = newMember?.id;
+      }
+
+      if (memberId) {
+        await (supabase as any).from('member_roles').insert({
+          member_id: memberId,
+          role_code: requestedRoleCode,
+          approval_status: 'pending',
+          request_note: description.trim() || null,
+          approved_by: null,
+          approved_at: null,
+        });
+      }
+    } catch {
+      // Ignored
+    }
+
     setBusy(false);
   }
 
