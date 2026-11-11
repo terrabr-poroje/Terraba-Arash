@@ -44,6 +44,8 @@ export async function requestSmsOtp(mobile: string): Promise<{ success: boolean;
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mobile }),
+      keepalive: true,
+      signal: AbortSignal.timeout(6000),
     });
     const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
     return {

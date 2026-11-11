@@ -102,8 +102,8 @@ function AuthPage() {
       setBusy(true);
       networkWatchdog = window.setTimeout(() => {
         setBusy(false);
-        setError("ارتباط با سرور پیامک طولانی شد. لطفاً دوباره تلاش کنید.");
-      }, 15000);
+        setError("ارتباط با درگاه پیامک طولانی شد. لطفاً دوباره امتحان کنید.");
+      }, 7000);
 
       setError("");
       setNotice("");
