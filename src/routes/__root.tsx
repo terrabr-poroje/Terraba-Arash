@@ -116,18 +116,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="fa" dir="rtl">
+    <html lang="fa" dir="rtl" suppressHydrationWarning>
       <head>
         {/* Universal polyfills executed immediately before any script or module */}
         <script dangerouslySetInnerHTML={{ __html: POLYFILL_INLINE_SCRIPT }} />
         <HeadContent />
       </head>
-      <body>
-        <noscript>
-          <div style={{ padding: "16px", backgroundColor: "#fff3cd", color: "#856404", textAlign: "center", borderBottom: "1px solid #ffeeba", fontFamily: "Tahoma, sans-serif", fontSize: "14px" }}>
-            برای مشاهده کامل و استفاده از امکانات سامانه ترابار، لطفاً جاوااسکریپت مرورگر خود را فعال نمایید یا از نسخه جدید مرورگر استفاده کنید.
-          </div>
-        </noscript>
+      <body suppressHydrationWarning>
+        <noscript
+          dangerouslySetInnerHTML={{
+            __html:
+              '<div style="padding:16px;background-color:#fff3cd;color:#856404;text-align:center;border-bottom:1px solid #ffeeba;font-family:Tahoma,sans-serif;font-size:14px;">برای مشاهده کامل و استفاده از امکانات سامانه ترابار، لطفاً جاوااسکریپت مرورگر خود را فعال نمایید یا از نسخه جدید مرورگر استفاده کنید.</div>',
+          }}
+        />
         {children}
         <Scripts />
       </body>

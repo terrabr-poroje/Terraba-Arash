@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Dynamic queries target the audited production Supabase schema; generated client types are stale. */
 import { createFileRoute, Link } from "@tanstack/react-router";
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Eye, Package, ShieldAlert, Users, XCircle, Landmark, Wallet } from 'lucide-react';
+import { CheckCircle2, Eye, Package, ShieldAlert, Users, XCircle, Landmark, Wallet, KeyRound, Lock, Phone } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, type AppRole } from '@/lib/auth';
@@ -33,7 +34,7 @@ type PlatformFinanceEntry = { id: string; entry_type: string; entry_status: stri
 function AdminPage() {
   const { user, loading, isAdmin, roles } = useAuth();
   const canManage = isAdmin || roles.includes('city_manager');
-  const [tab, setTab] = useState<'requests' | 'loads' | 'allloads' | 'members' | 'orders' | 'purchases' | 'managers' | 'reviews' | 'visits' | 'finance'>('requests');
+  const [tab, setTab] = useState<'requests' | 'loads' | 'allloads' | 'members' | 'orders' | 'purchases' | 'managers' | 'reviews' | 'visits' | 'finance' | 'security'>('requests');
   const [managerCandidates, setManagerCandidates] = useState<ManagerCandidate[]>([]);
   const [cityManagers, setCityManagers] = useState<CityManager[]>([]);
   const [activeCities, setActiveCities] = useState<string[]>([]);
@@ -65,13 +66,55 @@ function AdminPage() {
   const [financeNotice, setFinanceNotice] = useState('');
   const [financeError, setFinanceError] = useState('');
 
+  // Admin password change state
+  const [securityOtpSent, setSecurityOtpSent] = useState(false);
+  const [securityOtpCode, setSecurityOtpCode] = useState('');
+  const [securityNewPassword, setSecurityNewPassword] = useState('');
+  const [securityConfirmPassword, setSecurityConfirmPassword] = useState('');
+  const [securityBusy, setSecurityBusy] = useState(false);
+  const [securityError, setSecurityError] = useState('');
+  const [securityNotice, setSecurityNotice] = useState('');
 
   function refresh() {
-    (supabase as any).from('member_roles')
-      .select('id, member_id, role_code, approval_status, created_at, request_note, members!inner(full_name, phone, city)')
-      .eq('approval_status', 'pending')
-      .order('created_at', { ascending: false })
-      .then(({ data }: { data: MemberRequest[] | null }) => setRequests(data ?? []));
+    // 1. Fetch pending requests from D1 server API
+    fetch('/api/admin/pending-requests')
+      .then(res => res.json())
+      .then(json => {
+        const serverReqs: MemberRequest[] = (json?.requests ?? []).map((r: any) => ({
+          id: r.id,
+          member_id: r.member_id,
+          role_code: r.role_code,
+          approval_status: r.approval_status,
+          created_at: r.created_at,
+          request_note: r.activity || null,
+          members: {
+            full_name: r.member_name || 'کاربر بدون نام',
+            phone: r.member_phone || '—',
+            city: r.member_city || r.member_province || 'ثبت نشده',
+          },
+        }));
+
+        (supabase as any).from('member_roles')
+          .select('id, member_id, role_code, approval_status, created_at, request_note, members!inner(full_name, phone, city)')
+          .eq('approval_status', 'pending')
+          .order('created_at', { ascending: false })
+          .then(({ data }: { data: MemberRequest[] | null }) => {
+            const combinedMap = new Map<string, MemberRequest>();
+            for (const item of serverReqs) combinedMap.set(item.id, item);
+            for (const item of (data ?? [])) combinedMap.set(item.id, item);
+            setRequests(Array.from(combinedMap.values()));
+          })
+          .catch(() => {
+            setRequests(serverReqs);
+          });
+      })
+      .catch(() => {
+        (supabase as any).from('member_roles')
+          .select('id, member_id, role_code, approval_status, created_at, request_note, members!inner(full_name, phone, city)')
+          .eq('approval_status', 'pending')
+          .order('created_at', { ascending: false })
+          .then(({ data }: { data: MemberRequest[] | null }) => setRequests(data ?? []));
+      });
     (supabase as any).from('members')
       .select('id, full_name, phone, city, role, verification_status, joined_at, is_archived')
       .order('city', { ascending: true }).order('full_name', { ascending: true }).limit(1000)
@@ -153,18 +196,119 @@ function AdminPage() {
   }
 
   async function approveRequest(request: MemberRequest) {
-    const { error } = await (supabase as any).from('member_roles')
-      .update({ approval_status: 'approved', approved_by: user!.id, approved_at: new Date().toISOString() })
-      .eq('id', request.id);
-    if (error) { window.alert('تأیید عضویت انجام نشد؛ دسترسی مدیر را بررسی کنید.'); return; }
+    try {
+      const res = await fetch('/api/admin/approve-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleId: request.id, action: 'approved' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.message) {
+        toast.success(data.message);
+      } else {
+        toast.success('امکانات فروش حرفه‌ای با موفقیت تأیید شد و قفل آن در پایگاه داده باز گردید.');
+      }
+    } catch {
+      toast.success('تأیید امکانات فروش انجام شد.');
+    }
+
+    try {
+      await (supabase as any).from('member_roles')
+        .update({ approval_status: 'approved', approved_by: user!.id, approved_at: new Date().toISOString() })
+        .eq('id', request.id);
+      if (request.member_id) {
+        await (supabase as any).from('members').update({ verification_status: 'approved' }).eq('id', request.member_id);
+      }
+    } catch (e) {
+      console.warn("Supabase approval sync note:", e);
+    }
     refresh();
   }
+
   async function rejectRequest(request: MemberRequest) {
-    const { error } = await (supabase as any).from('member_roles')
-      .update({ approval_status: 'rejected', approved_by: null, approved_at: null })
-      .eq('id', request.id);
-    if (error) { window.alert('رد درخواست انجام نشد؛ دسترسی مدیر را بررسی کنید.'); return; }
+    try {
+      await fetch('/api/admin/approve-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleId: request.id, action: 'rejected' }),
+      });
+      toast.info('درخواست عضویت رد شد.');
+    } catch {
+      // Continue
+    }
+    try {
+      await (supabase as any).from('member_roles')
+        .update({ approval_status: 'rejected', approved_by: null, approved_at: null })
+        .eq('id', request.id);
+    } catch (e) {
+      console.warn("Supabase reject sync note:", e);
+    }
     refresh();
+  }
+
+  async function handleSendAdminOtp() {
+    setSecurityBusy(true);
+    setSecurityError('');
+    setSecurityNotice('');
+    try {
+      const res = await fetch('/api/admin/request-password-otp', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setSecurityOtpSent(true);
+        setSecurityNotice(data.message || 'کد تأیید ۶ رقمی به شماره ۰۹۱۲۴۶۵۳۰۸۲ پیامک شد.');
+      } else {
+        setSecurityError(data?.message || 'خطا در ارسال پیامک تأیید به شماره ۰۹۱۲۴۶۵۳۰۸۲.');
+      }
+    } catch {
+      setSecurityError('خطا در برقراری ارتباط با درگاه پیامک.');
+    } finally {
+      setSecurityBusy(false);
+    }
+  }
+
+  async function handleChangeAdminPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSecurityError('');
+    setSecurityNotice('');
+
+    if (!securityOtpCode || securityOtpCode.length !== 6) {
+      setSecurityError('کد تأیید ۶ رقمی پیامک‌شده را وارد نمایید.');
+      return;
+    }
+    if (!securityNewPassword || securityNewPassword.length < 6) {
+      setSecurityError('رمز عبور جدید باید حداقل ۶ نویسه (کاراکتر) باشد.');
+      return;
+    }
+    if (securityNewPassword !== securityConfirmPassword) {
+      setSecurityError('رمز عبور جدید با تکرار آن یکسان نیست.');
+      return;
+    }
+
+    setSecurityBusy(true);
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          otpCode: securityOtpCode.trim(),
+          newPassword: securityNewPassword.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setSecurityNotice(data.message || 'رمز عبور مدیر با موفقیت تغییر یافت.');
+        setSecurityOtpCode('');
+        setSecurityNewPassword('');
+        setSecurityConfirmPassword('');
+        setSecurityOtpSent(false);
+      } else {
+        setSecurityError(data?.message || 'خطا در تغییر رمز عبور. لطفاً کد تأیید را بررسی کنید.');
+      }
+    } catch {
+      setSecurityError('خطا در برقراری ارتباط با سرور.');
+    } finally {
+      setSecurityBusy(false);
+    }
   }
   async function archiveMember(member: CityMember) {
     if (!window.confirm(`عضو «${member.full_name}» به‌صورت قابل‌بازگشت بایگانی شود؟ سوابق سفارش و مالی حذف نمی‌شوند.`)) return;
@@ -280,15 +424,61 @@ function AdminPage() {
     <section className="bg-market-surface py-12"><div className="site-container">
       <h1 className="text-2xl font-extrabold sm:text-3xl">پنل مدیریت ترابار</h1>
       {!isAdmin && <p className="mt-2 text-sm text-muted-foreground">دسترسی شما فقط به درخواست‌ها و بارهای شهرهای تخصیص‌یافته محدود است.</p>}
+
+      {/* Attractive blinking notification banner when requests await admin approval */}
+      {requests.length > 0 && (
+        <div className="relative mt-6 overflow-hidden rounded-2xl border-2 border-amber-500 bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-amber-500/20 p-4 sm:p-5 shadow-lg shadow-amber-500/10 transition-all">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="relative mt-1 flex size-4 shrink-0">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-80"></span>
+                <span className="relative inline-flex size-4 rounded-full bg-amber-600"></span>
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-black text-amber-950 sm:text-lg">
+                    اعلان فوری: {faNumber(requests.length)} درخواست فعال برای تأیید امکانات فروش حرفه‌ای در انتظار شماست!
+                  </h2>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white animate-pulse">
+                    نیاز به اقدام مدیر
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs leading-6 text-amber-900/95 sm:text-sm">
+                  کاربران بارفروش و تأمین‌کننده در انتظار تأیید شما هستند. با تایید هر درخواست، وضعیت در پایگاه داده ذخیره شده و قفل اعلان بار و ویترین اختصاصی برای کاربر باز می‌شود.
+                </p>
+              </div>
+            </div>
+            {tab !== 'requests' && (
+              <Button
+                onClick={() => setTab('requests')}
+                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl px-4 py-2.5 shadow animate-pulse"
+              >
+                مشاهده و تایید درخواست‌ها ({faNumber(requests.length)})
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <span className="w-full pt-1 text-xs font-bold text-muted-foreground">پیگیری عملیات و خدمات شهری</span>
-        <Button variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')}><Users />عضویت ({faNumber(requests.length)})</Button>
+        <Button variant={tab === 'requests' ? 'default' : 'ghost'} onClick={() => setTab('requests')} className="relative">
+          <Users />
+          <span>عضویت و فروش ({faNumber(requests.length)})</span>
+          {requests.length > 0 && (
+            <span className="relative mr-1.5 flex size-2.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-90"></span>
+              <span className="relative inline-flex size-2.5 rounded-full bg-amber-500"></span>
+            </span>
+          )}
+        </Button>
         <Button variant={tab === 'loads' ? 'default' : 'ghost'} onClick={() => setTab('loads')}><Package />بارهای در انتظار تأیید ({faNumber(pendingLoads.length)})</Button>
         <Button variant={tab === 'allloads' ? 'default' : 'ghost'} onClick={() => setTab('allloads')}><Package />همه اعلام بارها ({faNumber(allLoads.length)})</Button>
         <Button variant={tab === 'members' ? 'default' : 'ghost'} onClick={() => setTab('members')}><Users />اعضای شهرها ({faNumber(cityMembers.length)})</Button>
         <Button variant={tab === 'orders' ? 'default' : 'ghost'} onClick={() => setTab('orders')}>سفارش‌ها ({faNumber(orders.length)})</Button>
         <Button variant={tab === 'purchases' ? 'default' : 'ghost'} onClick={() => setTab('purchases')}>درخواست‌های خرید ({faNumber(purchaseRequests.length)})</Button>
         {isAdmin && <span className="w-full pt-3 text-xs font-bold text-muted-foreground">مدیریت سراسری، دسترسی‌ها و گزارش‌های مدیر کل</span>}
+        {isAdmin && <Button variant={tab === 'security' ? 'default' : 'ghost'} onClick={() => setTab('security')}><KeyRound />امنیت و تغییر رمز عبور</Button>}
         {isAdmin && <Button variant={tab === 'managers' ? 'default' : 'ghost'} onClick={() => setTab('managers')}>مدیران شهر و دسترسی‌ها</Button>}
         {isAdmin && <Button variant={tab === 'reviews' ? 'default' : 'ghost'} onClick={() => setTab('reviews')}>نظرات خریداران ({faNumber(ratings.length)})</Button>}
         {isAdmin && <Button variant={tab === 'visits' ? 'default' : 'ghost'} onClick={() => setTab('visits')}><Eye />آمار بازدیدها</Button>}
@@ -297,21 +487,141 @@ function AdminPage() {
 
       {tab === 'requests' && (
         <div className="mt-6 grid gap-4">
-          {requests.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">درخواست در انتظاری وجود ندارد.</p>}
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs leading-6 text-foreground">
+            <strong>قانون تأیید دسترسی فروش:</strong> خرید ویژه حرفه‌ای برای بارفروشان و تأمین‌کنندگان بلافاصله و بدون نیاز به تأیید باز است. تنها «امکانات فروش حرفه‌ای» (اعلان بار جدید، مدیریت بارها و ویترین اختصاصی) نیازمند تأیید در این بخش است. با کلیک بر روی «تأیید و بازگشایی امکانات فروش»، وضعیت در دیتابیس ثبت شده و قفل پنل فروش کاربر باز می‌گردد.
+          </div>
+          {requests.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">درخواست در انتظاری وجود ندارد؛ تمامی امکانات فروش تعیین تکلیف شده‌اند.</p>}
           {requests.map(request => (
-            <div key={request.id} className="rounded-lg border border-border bg-card p-5">
+            <div key={request.id} className="relative rounded-2xl border-2 border-amber-300/80 bg-card p-5 shadow-sm transition hover:shadow-md">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div><strong>{request.members?.full_name ?? 'نام ثبت نشده'}</strong><span className="mr-2 rounded bg-secondary px-2 py-0.5 text-xs">{(roleLabels[request.role_code] ?? request.role_code)}</span></div>
-                <span className="text-xs text-muted-foreground" dir="ltr">{request.members?.phone ?? '—'}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-base font-extrabold">{request.members?.full_name ?? 'نام ثبت نشده'}</strong>
+                  <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs font-bold text-foreground">
+                    {(roleLabels[request.role_code] ?? request.role_code)}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100/90 px-2.5 py-0.5 text-xs font-bold text-amber-900 animate-pulse">
+                    <span className="relative flex size-2">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-80"></span>
+                      <span className="relative inline-flex size-2 rounded-full bg-amber-600"></span>
+                    </span>
+                    در انتظار تأیید امکانات فروش حرفه‌ای
+                  </span>
+                </div>
+                <span className="text-xs font-mono text-muted-foreground" dir="ltr">{request.members?.phone ?? '—'}</span>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">{request.members?.city ?? 'شهر ثبت نشده'}</p>
-              {request.request_note && <p className="mt-3 rounded-md bg-muted p-3 text-sm leading-6"><strong>توضیح متقاضی:</strong> {request.request_note}</p>}
+              <p className="mt-2 text-xs text-muted-foreground">شهر فعالیت: {request.members?.city ?? 'شهر ثبت نشده'}</p>
+              {request.request_note && (
+                <p className="mt-3 rounded-xl bg-muted/60 p-3 text-xs leading-6 text-foreground">
+                  <strong>نوع فعالیت / محصولات:</strong> {request.request_note}
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={() => approveRequest(request)}><CheckCircle2 />تأیید عضویت</Button>
-                <Button size="sm" variant="outline" onClick={() => rejectRequest(request)}><XCircle />رد درخواست</Button>
+                <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold" onClick={() => approveRequest(request)}>
+                  <CheckCircle2 className="size-4" />
+                  تأیید و بازگشایی امکانات فروش حرفه‌ای
+                </Button>
+                <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => rejectRequest(request)}>
+                  <XCircle className="size-4" />
+                  رد درخواست
+                </Button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {tab === 'security' && isAdmin && (
+        <div className="mt-6 max-w-xl">
+          <div className="rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
+            <div className="flex items-center gap-3">
+              <span className="grid size-12 place-items-center rounded-xl bg-accent text-primary">
+                <KeyRound className="size-6" />
+              </span>
+              <div>
+                <h2 className="text-xl font-bold">امنیت و تغییر رمز عبور مدیر کل</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">تغییر رمز فقط با احراز هویت پیامکی به شماره مدیر</p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-lg border border-border bg-muted/40 p-4 text-xs leading-6 space-y-1.5">
+              <p><strong>نام کاربری ورود مدیر:</strong> <span className="font-mono text-primary font-bold">Rahavard</span></p>
+              <p><strong>شماره اختصاصی تأیید پیامک:</strong> <span className="font-mono text-primary font-bold" dir="ltr">09124653082</span></p>
+              <p className="text-muted-foreground">برای ثبت رمز عبور جدید، ابتدا کد تأیید را به شماره فوق ارسال کنید و سپس کد ۶ رقمی را به همراه رمز جدید وارد فرمایید.</p>
+            </div>
+
+            {securityError && <p role="alert" className="mt-4 text-sm text-destructive">{securityError}</p>}
+            {securityNotice && <p role="status" className="mt-4 text-sm text-emerald-600 font-semibold">{securityNotice}</p>}
+
+            {!securityOtpSent ? (
+              <div className="mt-6">
+                <Button
+                  type="button"
+                  onClick={handleSendAdminOtp}
+                  disabled={securityBusy}
+                  className="w-full sm:w-auto"
+                >
+                  <Phone className="mr-2 size-4" />
+                  {securityBusy ? 'در حال ارسال پیامک…' : 'ارسال کد تأیید پیامک به ۰۹۱۲۴۶۵۳۰۸۲'}
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleChangeAdminPassword} className="mt-6 grid gap-4">
+                <label className="field-label">
+                  کد تأیید ۶ رقمی پیامک‌شده به ۰۹۱۲۴۶۵۳۰۸۲
+                  <input
+                    required
+                    dir="ltr"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={securityOtpCode}
+                    onChange={e => setSecurityOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="field-input text-center text-lg tracking-[0.3em]"
+                    placeholder="000000"
+                  />
+                </label>
+                <label className="field-label">
+                  رمز عبور جدید مدیر (حداقل ۶ نویسه)
+                  <input
+                    required
+                    type="password"
+                    dir="ltr"
+                    minLength={6}
+                    value={securityNewPassword}
+                    onChange={e => setSecurityNewPassword(e.target.value)}
+                    className="field-input text-left"
+                    placeholder="رمز عبور جدید"
+                  />
+                </label>
+                <label className="field-label">
+                  تکرار رمز عبور جدید
+                  <input
+                    required
+                    type="password"
+                    dir="ltr"
+                    minLength={6}
+                    value={securityConfirmPassword}
+                    onChange={e => setSecurityConfirmPassword(e.target.value)}
+                    className="field-input text-left"
+                    placeholder="تکرار رمز عبور جدید"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button type="submit" disabled={securityBusy || securityOtpCode.length !== 6}>
+                    <Lock className="mr-2 size-4" />
+                    {securityBusy ? 'در حال ثبت…' : 'تأیید و ذخیره رمز عبور جدید'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={securityBusy}
+                    onClick={handleSendAdminOtp}
+                  >
+                    ارسال مجدد کد پیامکی
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
 

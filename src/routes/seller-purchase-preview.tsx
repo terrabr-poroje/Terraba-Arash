@@ -9,6 +9,7 @@ export const Route = createFileRoute("/seller-purchase-preview")({
 
 const purchaseOptions = [
   { title: "خرید بار", description: "مشاهده و جست‌وجوی بارهای موجود برای خرید", icon: ShoppingBasket, color: "bg-lime-50 text-lime-800", to: "/requests" },
+  { title: "خرید ویژه حرفه‌ای", description: "مشاهده و خرید بارهای موجود ویژه حرفه‌ای فقط در بازار مستقل (بدون نیاز به تأیید مدیریت)", icon: ShoppingBasket, color: "bg-amber-50 text-amber-800", to: "/professional-purchase" },
   { title: "پیگیری سفارش‌های جاری", description: "پیگیری خریدهای در انتظار پرداخت یا در حال ارسال", icon: Truck, color: "bg-emerald-50 text-emerald-800", to: "/orders-current-preview" },
   { title: "سفارش‌های انجام‌شده", description: "مرور خریدهای تکمیل‌شده و سابقه سفارش‌ها", icon: History, color: "bg-violet-50 text-violet-800", to: "/orders-completed-preview" },
 ];

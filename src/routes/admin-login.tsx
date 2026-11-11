@@ -13,7 +13,7 @@ const TEMPORARY_ADMIN_PASSWORD = "Amir-112233";
 
 function AdminLoginPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState("Rahavard");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -34,64 +34,53 @@ function AdminLoginPage() {
       return;
     }
 
-    if (cleanPassword !== TEMPORARY_ADMIN_PASSWORD) {
-      setError("رمز عبور مدیر نادرست است. لطفاً رمز عبور موقت معتبر را وارد نمایید.");
+    if (
+      cleanUsername.toLowerCase() !== "rahavard" &&
+      cleanUsername.toLowerCase() !== "admin"
+    ) {
+      setError("نام کاربری مدیر نامعتبر است. نام کاربری مدیر باید Rahavard باشد.");
       setBusy(false);
       return;
     }
 
-    // Try backend verification if available, or establish local admin session
+    // Authenticate with backend admin login
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: cleanUsername, password: cleanPassword }),
-      }).catch(() => null);
+      });
 
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data?.sessionToken) {
-          const sessionData = {
-            token: data.sessionToken,
-            user: data.user,
-            member: data.member,
-            roles: data.roles || ["admin", "buyer", "seller", "supplier"],
-          };
-          localStorage.setItem("terrabar_d1_session", JSON.stringify(sessionData));
-          document.cookie = `tb_session=${data.sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`;
-          window.dispatchEvent(new CustomEvent("terrabar-auth-change", { detail: sessionData }));
-          setNotice("ورود مدیر با موفقیت تأیید شد؛ در حال انتقال به پنل مدیریت…");
-          setBusy(false);
-          window.setTimeout(() => navigate({ to: "/admin" }), 500);
-          return;
-        }
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.success) {
+        setError(data?.message || "نام کاربری یا رمز عبور مدیر نادرست است.");
+        setBusy(false);
+        return;
+      }
+
+      if (data?.sessionToken) {
+        const sessionData = {
+          token: data.sessionToken,
+          user: data.user,
+          member: data.member,
+          roles: data.roles || ["admin", "buyer", "seller", "supplier"],
+        };
+        localStorage.setItem("terrabar_d1_session", JSON.stringify(sessionData));
+        document.cookie = `tb_session=${data.sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax`;
+        window.dispatchEvent(new CustomEvent("terrabar-auth-change", { detail: sessionData }));
+        setNotice("ورود مدیر با موفقیت تأیید شد؛ در حال انتقال به پنل مدیریت…");
+        setBusy(false);
+        window.setTimeout(() => navigate({ to: "/admin" }), 400);
+        return;
       }
     } catch {
-      // Fallback to client session
+      setError("خطا در برقراری ارتباط با سرور. لطفاً اتصال اینترنت را بررسی کنید.");
+      setBusy(false);
+      return;
     }
 
-    // Authenticate admin session in D1
-    const adminSession = {
-      token: `admin_sess_${Date.now()}`,
-      user: {
-        id: "admin_user_main",
-        phone: "09120000000",
-        full_name: cleanUsername === "admin" ? "مدیر ارشد ترابار" : cleanUsername,
-        role: "admin",
-        city: "تهران",
-        province: "تهران",
-        email: `${cleanUsername}@terrabar.ir`,
-      },
-      roles: ["admin", "buyer", "seller", "supplier"],
-    };
-
-    localStorage.setItem("terrabar_d1_session", JSON.stringify(adminSession));
-    document.cookie = `tb_session=${adminSession.token}; Path=/; Max-Age=2592000; SameSite=Lax`;
-    window.dispatchEvent(new CustomEvent("terrabar-auth-change", { detail: adminSession }));
-
-    setNotice("ورود مدیر با موفقیت تأیید شد؛ در حال انتقال به پنل مدیریت…");
     setBusy(false);
-    window.setTimeout(() => navigate({ to: "/admin" }), 500);
   }
 
   return (
@@ -109,18 +98,19 @@ function AdminLoginPage() {
           </div>
           <form onSubmit={submit} className="grid gap-4">
             <label className="field-label">
-              نام کاربری
+              نام کاربری مدیر
               <input
                 required
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="field-input"
-                placeholder="مثال: admin"
+                className="field-input font-mono"
+                dir="ltr"
+                placeholder="Rahavard"
               />
             </label>
             <label className="field-label">
-              رمز عبور موقت مدیر
+              رمز عبور مدیر
               <input
                 required
                 type="password"
@@ -130,7 +120,7 @@ function AdminLoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="field-input text-left"
                 dir="ltr"
-                placeholder="رمز عبور موقت"
+                placeholder="رمز عبور مدیر"
               />
             </label>
             {error && (

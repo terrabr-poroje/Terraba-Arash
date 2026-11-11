@@ -270,6 +270,123 @@ function smsDevApiPlugin(): Plugin {
           return;
         }
 
+        // Get pending membership/role requests for Supplier and Seller approval in dev
+        if (req.method === "GET" && req.url === "/api/admin/pending-requests") {
+          try {
+            const { getPendingRoleRequests } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+              getPendingRoleRequests: () => Promise<any[]>;
+            };
+            const requests = await getPendingRoleRequests();
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, requests }));
+          } catch (err) {
+            console.error("[dev /api/admin/pending-requests error]", err);
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: false, requests: [] }));
+          }
+          return;
+        }
+
+        // Approve or reject role request (Supplier or Seller) in dev
+        if (req.method === "POST" && req.url === "/api/admin/approve-request") {
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk;
+          });
+          req.on("end", async () => {
+            try {
+              const parsed = JSON.parse(body || "{}");
+              const roleId = parsed.roleId || "";
+              const action = parsed.action === "rejected" ? "rejected" : "approved";
+
+              if (!roleId) {
+                res.setHeader("Content-Type", "application/json; charset=utf-8");
+                res.statusCode = 400;
+                res.end(JSON.stringify({ success: false, message: "شناسه درخواست ارسال نشده است." }));
+                return;
+              }
+
+              const { updateRoleApprovalStatus } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+                updateRoleApprovalStatus: (id: string, st: "approved" | "rejected") => Promise<boolean>;
+              };
+              const success = await updateRoleApprovalStatus(roleId, action);
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = 200;
+              res.end(
+                JSON.stringify({
+                  success,
+                  message:
+                    action === "approved"
+                      ? "عضویت و دسترسی فروش با موفقیت تأیید شد و در پایگاه داده ذخیره گردید."
+                      : "درخواست عضویت رد شد.",
+                }),
+              );
+            } catch (err: any) {
+              console.error("[dev /api/admin/approve-request error]", err);
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, message: err?.message || "خطا در ثبت وضعیت درخواست" }));
+            }
+          });
+          return;
+        }
+
+        // Resubmit request for professional selling features in dev
+        if (req.method === "POST" && req.url === "/api/membership/resubmit-selling-request") {
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk;
+          });
+          req.on("end", async () => {
+            try {
+              const parsed = JSON.parse(body || "{}");
+              const { resubmitSellingApprovalRequest } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+                resubmitSellingApprovalRequest: (p: any) => Promise<any>;
+              };
+              const result = await resubmitSellingApprovalRequest({
+                userId: parsed.userId,
+                memberId: parsed.memberId,
+                roleCode: parsed.roleCode,
+                note: parsed.note,
+              });
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = result.success ? 200 : 400;
+              res.end(JSON.stringify(result));
+            } catch (err: any) {
+              console.error("[dev resubmit-selling-request error]", err);
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.statusCode = 500;
+              res.end(JSON.stringify({ success: false, message: err?.message || "خطا در ارسال درخواست به مدیر" }));
+            }
+          });
+          return;
+        }
+
+        // Get user selling status in dev
+        if (req.method === "GET" && req.url?.startsWith("/api/membership/selling-status")) {
+          try {
+            const urlObj = new URL(req.url, "http://localhost:3000");
+            const userId = urlObj.searchParams.get("userId") || "";
+            const { getMemberSellingStatus } = (await server.ssrLoadModule("./src/lib/d1-database.ts")) as {
+              getMemberSellingStatus: (u: string) => Promise<any>;
+            };
+            const status = await getMemberSellingStatus(userId);
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+            res.statusCode = 200;
+            res.end(JSON.stringify({ success: true, status }));
+          } catch (err: any) {
+            console.error("[dev selling-status error]", err);
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, message: err?.message || "خطا در دریافت وضعیت" }));
+          }
+          return;
+        }
+
         // Handle ParsPack upload in dev
         if (req.method === "POST" && req.url === "/api/storage/upload") {
           const chunks: Buffer[] = [];

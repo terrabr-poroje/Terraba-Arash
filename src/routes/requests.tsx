@@ -55,7 +55,7 @@ const isoToJalaliDate = (value: string) => {
 const canUseProfessionalRole = (roles: string[]) => roles.some(role => ["supplier", "bar_seller", "seller"].includes(role));
 
 export function Requests({ ordersOnly = false, professionalOnly = false }: { ordersOnly?: boolean; professionalOnly?: boolean } = {}) {
-  const { user } = useAuth();
+  const { user, member, roles } = useAuth();
   const [profileCity, setProfileCity] = useState("");
   const [approvedRoleCodes, setApprovedRoleCodes] = useState<string[]>([]);
   const [allowedCities, setAllowedCities] = useState<string[]>([]);
@@ -101,13 +101,17 @@ export function Requests({ ordersOnly = false, professionalOnly = false }: { ord
       return valid;
     } catch { return []; }
   };
-  const [cartItems, setCartItems] = useState<CartLine[]>(() => typeof window !== "undefined" ? readValidCart() : []);
+  const [cartItems, setCartItems] = useState<CartLine[]>([]);
   const [submittedCart, setSubmittedCart] = useState<{ load: Load; quantity: number; saleType: string }[]>([]);
   const [cartError, setCartError] = useState("");
   const [cartNotice, setCartNotice] = useState("");
   const [cartBusy, setCartBusy] = useState(false);
   const [cartInvoiceVisible, setCartInvoiceVisible] = useState(false);
   
+  useEffect(() => {
+    setCartItems(readValidCart());
+  }, []);
+
   useEffect(() => { try { window.localStorage.setItem(CART_KEY, JSON.stringify(cartItems)); window.sessionStorage.removeItem(CART_KEY); window.dispatchEvent(new Event("terrabar-cart-updated")); } catch { /* Storage may be unavailable; keep the current in-memory cart. */ } }, [cartItems]);
   useEffect(() => {
     const expireCartItems = () => {
@@ -295,8 +299,13 @@ export function Requests({ ordersOnly = false, professionalOnly = false }: { ord
     [liveLoads],
   );
   const normalizedQuery = filters.query.trim().replace(/ي/g, "ی").replace(/ك/g, "ک").replace(/\s/g, "");
-  const canUseProfessional = approvedRoleCodes.some(role => ["supplier", "bar_seller", "seller"].includes(role));
-  const canBuySupplierProfessional = approvedRoleCodes.some(role => ["supplier", "bar_seller", "seller"].includes(role));
+  const userRole = String(member?.role || user?.role || "").toLowerCase();
+  const hasProfessionalRole =
+    roles.some(r => ["supplier", "bar_seller", "seller"].includes(r)) ||
+    ["supplier", "bar_seller", "seller"].includes(userRole) ||
+    approvedRoleCodes.some(r => ["supplier", "bar_seller", "seller"].includes(r));
+  const canUseProfessional = hasProfessionalRole;
+  const canBuySupplierProfessional = hasProfessionalRole;
   const selectedMode = purchaseModes.find(item => item.value === purchaseMode) ?? purchaseModes[0];
   const availableProducts = [...new Set(displayLoads.map(load => load.product).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fa"));
   const filtered = displayLoads
@@ -458,7 +467,7 @@ export function Requests({ ordersOnly = false, professionalOnly = false }: { ord
   }
 
   if (professionalOnly && !canUseProfessional) {
-    return <section dir="rtl" className="bg-market-surface py-16"><div className="site-container max-w-xl rounded-2xl border border-border bg-card p-6 text-center"><h1 className="text-xl font-extrabold">خرید ویژه حرفه‌ای</h1><p className="mt-3 text-sm leading-7 text-muted-foreground">این بخش فقط برای تأمین‌کنندگان و بارفروشان دارای عضویت تأییدشده فعال است. بارهای ویژه حرفه‌ای در بازارهای دیگر نمایش داده نمی‌شوند.</p><Link to="/member-home" className="mt-5 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-semibold">بازگشت به صفحه اصلی کاربر</Link></div></section>;
+    return <section dir="rtl" className="bg-market-surface py-16"><div className="site-container max-w-xl rounded-2xl border border-border bg-card p-6 text-center"><h1 className="text-xl font-extrabold">خرید ویژه حرفه‌ای</h1><p className="mt-3 text-sm leading-7 text-muted-foreground">این بخش برای تأمین‌کنندگان و بارفروشان فعال است. بارهای ویژه حرفه‌ای فقط در این بخش مستقل نمایش داده می‌شوند.</p><Link to="/member-home" className="mt-5 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-semibold">بازگشت به صفحه اصلی کاربر</Link></div></section>;
   }
 
   return (

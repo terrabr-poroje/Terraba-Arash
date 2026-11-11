@@ -330,32 +330,7 @@ export const POLYFILL_INLINE_SCRIPT = `
       };
     }
 
-    // 19. Feature flag tags on documentElement for CSS resilience
-    if (typeof document !== 'undefined' && document.documentElement) {
-      var docEl = document.documentElement;
-      
-      // Check OKLCH support
-      var supportsOklch = false;
-      if (typeof CSS !== 'undefined' && CSS.supports) {
-        try {
-          supportsOklch = CSS.supports('color', 'oklch(0 0 0)');
-        } catch(e) {}
-      }
-      if (!supportsOklch) {
-        docEl.classList.add('no-oklch');
-      }
-
-      // Check WebP support
-      try {
-        var testCanvas = document.createElement('canvas');
-        if (testCanvas.getContext && testCanvas.getContext('2d')) {
-          var isWebPSupported = testCanvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
-          if (!isWebPSupported) {
-            docEl.classList.add('no-webp');
-          }
-        }
-      } catch(e) {}
-    }
+    // 19. No direct documentElement DOM mutation before React hydration (prevents React 19 attribute mismatch)
 
     // 20. Clean up any stale service workers or caches that could lock subsequent loads
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {

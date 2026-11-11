@@ -13,6 +13,9 @@ export const Route = createFileRoute("/auth")({
       "ورود و ثبت‌نام",
       "ثبت‌نام و ورود سریع در ترابار؛ ارتباط مستقیم باغداران، تأمین‌کنندگان، بارفروشان و خریداران میوه و تره‌بار.",
     ),
+  validateSearch: (search: Record<string, unknown>): { role?: string } => ({
+    role: typeof search.role === "string" ? search.role : undefined,
+  }),
   component: AuthPage,
 });
 
@@ -49,7 +52,8 @@ function normalizeIranPhone(value: string) {
 }
 
 function AuthPage() {
-  const roleParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("role") : null;
+  const search = Route.useSearch();
+  const roleParam = search.role || null;
   const fixedRole =
     roleParam === "supplier"
       ? "supplier"

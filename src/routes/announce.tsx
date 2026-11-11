@@ -91,6 +91,8 @@ async function optimizeLoadPhoto(file: File): Promise<File> {
 }
 function AnnouncePage() {
   const { user, loading, canAnnounce } = useAuth();
+  const [origin, setOrigin] = useState('');
+  useEffect(() => { if (typeof window !== 'undefined') setOrigin(window.location.origin); }, []);
   const [form, setForm] = useState({ product: '', variety: '', quality: 'استاندارد', city: 'کرج', province: 'البرز', packageType: 'کارتن', weight: '', stock: '', minimum: '', price: '', ready: localIsoDate(), adStart: localIsoDate(), adEnd: localIsoDate(), responseStart: '08:00', responseEnd: '18:00', description: '' });
   const [memberCity, setMemberCity] = useState('');
   const [storefrontMemberId, setStorefrontMemberId] = useState('');
@@ -514,7 +516,7 @@ function AnnouncePage() {
             <h2 className="font-extrabold text-emerald-950">ویترین اختصاصی من</h2>
             <p className="mt-1 text-sm leading-6 text-emerald-900">این لینک را برای مشتری‌های خود بفرستید. اگر مشتری وارد ترابار نشده باشد، ابتدا ثبت‌نام یا ورود می‌کند و سپس مستقیم به ویترین شما برمی‌گردد.</p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <input readOnly dir="ltr" aria-label="لینک اختصاصی ویترین" value={typeof window !== 'undefined' ? window.location.origin + '/store/' + encodeURIComponent(storefrontMemberId) : '/store/' + storefrontMemberId} className="field-input min-w-0 flex-1 bg-white text-left text-sm" />
+              <input readOnly dir="ltr" aria-label="لینک اختصاصی ویترین" suppressHydrationWarning value={(origin || '') + '/store/' + encodeURIComponent(storefrontMemberId)} className="field-input min-w-0 flex-1 bg-white text-left text-sm" />
               <Button type="button" className="shrink-0" onClick={async () => {
                 const link = window.location.origin + '/store/' + encodeURIComponent(storefrontMemberId);
                 try {

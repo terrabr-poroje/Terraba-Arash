@@ -10,6 +10,14 @@ import {
   registerOrLoginUserWithEmail,
   validateD1Session,
   invalidateD1Session,
+  getAdminPassword,
+  setAdminPassword,
+  getPendingRoleRequests,
+  updateRoleApprovalStatus,
+  resubmitSellingApprovalRequest,
+  getMemberSellingStatus,
+  ADMIN_PHONE_FOR_OTP,
+  ADMIN_USERNAME,
 } from "./lib/d1-database";
 import {
   uploadToParsPack,
@@ -287,7 +295,7 @@ export default {
         }
       }
 
-      // Handle Admin login with temporary password Amir-112233
+      // Handle Admin login with username Rahavard and dynamic password
       if (url.pathname === "/api/admin/login" && request.method === "POST") {
         try {
           const body = (await request.json().catch(() => ({}))) as {
@@ -297,9 +305,27 @@ export default {
           const username = body?.username?.trim() || "";
           const password = body?.password?.trim() || "";
 
-          if (password !== "Amir-112233") {
+          const isAuthorizedUsername =
+            username.toLowerCase() === ADMIN_USERNAME.toLowerCase() ||
+            username.toLowerCase() === "admin";
+
+          if (!isAuthorizedUsername) {
             return new Response(
-              JSON.stringify({ success: false, message: "رمز عبور موقت مدیر نادرست است." }),
+              JSON.stringify({
+                success: false,
+                message: `نام کاربری مدیر نادرست است. نام کاربری باید «${ADMIN_USERNAME}» باشد.`,
+              }),
+              {
+                status: 401,
+                headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+              },
+            );
+          }
+
+          const currentPassword = await getAdminPassword();
+          if (password !== currentPassword) {
+            return new Response(
+              JSON.stringify({ success: false, message: "رمز عبور مدیر نادرست است." }),
               {
                 status: 401,
                 headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
@@ -310,12 +336,12 @@ export default {
           const token = `admin_sess_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
           const user = {
             id: "admin_user_main",
-            phone: "09120000000",
-            full_name: username === "admin" ? "مدیر کل ترابار" : username || "مدیر ارشد ترابار",
+            phone: ADMIN_PHONE_FOR_OTP,
+            full_name: "مدیر ارشد ترابار (ره‌آورد)",
             role: "admin",
             city: "تهران",
             province: "تهران",
-            email: `${username || "admin"}@terrabar.ir`,
+            email: `${ADMIN_USERNAME.toLowerCase()}@terrabar.ir`,
           };
           const member = {
             id: "mem_admin_user_main",
@@ -353,6 +379,179 @@ export default {
               status: 500,
               headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
             },
+          );
+        }
+      }
+
+      // Request OTP to 09124653082 for Admin Password Change
+      if (url.pathname === "/api/admin/request-password-otp" && request.method === "POST") {
+        try {
+          const smsResult = await sendOtpSms(ADMIN_PHONE_FOR_OTP);
+          return new Response(
+            JSON.stringify({
+              success: smsResult.success,
+              message: smsResult.message || `کد تأیید به شماره ${ADMIN_PHONE_FOR_OTP} پیامک شد.`,
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+            },
+          );
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در ارسال پیامک تأیید" }),
+            {
+              status: 500,
+              headers: { "content-type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+            },
+          );
+        }
+      }
+
+      // Confirm Admin Password Change using OTP received on 09124653082
+      if (url.pathname === "/api/admin/change-password" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as {
+            otpCode?: string;
+            newPassword?: string;
+          };
+          const otpCode = body?.otpCode?.trim() || "";
+          const newPassword = body?.newPassword?.trim() || "";
+
+          if (!otpCode || otpCode.length !== 6) {
+            return new Response(
+              JSON.stringify({ success: false, message: "کد تأیید ۶ رقمی پیامک‌شده را وارد کنید." }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
+          if (!newPassword || newPassword.length < 6) {
+            return new Response(
+              JSON.stringify({ success: false, message: "رمز عبور جدید باید حداقل ۶ نویسه (کاراکتر) باشد." }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
+          const verifyRes = verifyOtpCode(ADMIN_PHONE_FOR_OTP, otpCode);
+          if (!verifyRes.success) {
+            return new Response(
+              JSON.stringify({ success: false, message: verifyRes.message || "کد تأیید پیامک نادرست یا منقضی شده است." }),
+              { status: 400, headers: { "content-type": "application/json; charset=utf-8" } },
+            );
+          }
+
+          await setAdminPassword(newPassword);
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: "رمز عبور مدیر با موفقیت تغییر یافت. برای ورودهای بعدی از رمز عبور جدید استفاده کنید.",
+            }),
+            { status: 200, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در تغییر رمز عبور مدیر" }),
+            { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+      }
+
+      // Get pending membership/role requests for Supplier and Seller approval
+      if (url.pathname === "/api/admin/pending-requests" && request.method === "GET") {
+        try {
+          const requests = await getPendingRoleRequests();
+          return new Response(JSON.stringify({ success: true, requests }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
+          });
+        } catch {
+          return new Response(JSON.stringify({ success: false, requests: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        }
+      }
+
+      // Approve or reject role request (Supplier or Seller)
+      if (url.pathname === "/api/admin/approve-request" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as {
+            roleId?: string;
+            action?: "approved" | "rejected";
+          };
+          const roleId = body?.roleId || "";
+          const action = body?.action === "rejected" ? "rejected" : "approved";
+
+          if (!roleId) {
+            return new Response(JSON.stringify({ success: false, message: "شناسه درخواست ارسال نشده است." }), {
+              status: 400,
+              headers: { "content-type": "application/json; charset=utf-8" },
+            });
+          }
+
+          const success = await updateRoleApprovalStatus(roleId, action);
+          return new Response(
+            JSON.stringify({
+              success,
+              message: action === "approved" ? "عضویت و دسترسی فروش با موفقیت تأیید شد." : "درخواست عضویت رد شد.",
+            }),
+            { status: 200, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در ثبت وضعیت درخواست" }),
+            { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+      }
+
+      // Resubmit request for professional selling features
+      if (url.pathname === "/api/membership/resubmit-selling-request" && request.method === "POST") {
+        try {
+          const body = (await request.json().catch(() => ({}))) as {
+            userId?: string;
+            memberId?: string;
+            roleCode?: string;
+            note?: string;
+          };
+          const result = await resubmitSellingApprovalRequest({
+            userId: body.userId,
+            memberId: body.memberId,
+            roleCode: body.roleCode,
+            note: body.note,
+          });
+          return new Response(JSON.stringify(result), {
+            status: result.success ? 200 : 400,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          });
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در ارسال درخواست به مدیر" }),
+            { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
+          );
+        }
+      }
+
+      // Get selling status for member
+      if (url.pathname === "/api/membership/selling-status" && request.method === "GET") {
+        try {
+          const userId = url.searchParams.get("userId") || "";
+          const status = await getMemberSellingStatus(userId);
+          return new Response(JSON.stringify({ success: true, status }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json; charset=utf-8",
+              "cache-control": "no-store, no-cache, must-revalidate",
+            },
+          });
+        } catch (e: any) {
+          return new Response(
+            JSON.stringify({ success: false, message: e?.message || "خطا در دریافت وضعیت" }),
+            { status: 500, headers: { "content-type": "application/json; charset=utf-8" } },
           );
         }
       }
