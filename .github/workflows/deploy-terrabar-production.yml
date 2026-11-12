@@ -5,12 +5,20 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "bun.lock"
+      - "bun.lockb"
+      - "vite.config.*"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: terrabar-production-deployment
+  group: terrabar-production-deploy
   cancel-in-progress: false
 
 jobs:
@@ -75,7 +83,7 @@ jobs:
           const fs = require('fs');
           const path = '.output/server/wrangler.json';
           const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-          config.name = 'terrabar-market';
+          config.name = 'terraba-arash';
           config.routes = [
             { pattern: 'terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' },
             { pattern: 'www.terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' }
@@ -85,7 +93,7 @@ jobs:
           }
           fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
           const verified = JSON.parse(fs.readFileSync(path, 'utf8'));
-          if (verified.name !== 'terrabar-market') {
+          if (verified.name !== 'terraba-arash') {
             throw new Error('Refusing deployment: unexpected Worker name ' + verified.name);
           }
           const routes = verified.routes || [];
@@ -97,7 +105,7 @@ jobs:
           if (routes.some(route => !['terrabar.ir/*', 'www.terrabar.ir/*'].includes(route.pattern))) {
             throw new Error('Refusing deployment: unexpected route found in production config');
           }
-          console.log('Verified: Worker terrabar-market uses only the two approved zone-ID routes; existing DNS records are preserved.');
+          console.log('Verified: Worker terraba-arash uses only the two approved zone-ID routes; existing DNS records are preserved.');
           NODE
 
       - name: Deploy to the existing production Worker

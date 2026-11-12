@@ -1,16 +1,6 @@
 name: Build and deploy Terrabar to Cloudflare
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "public/**"
-      - "package.json"
-      - "bun.lock"
-      - "bun.lockb"
-      - "vite.config.*"
-      - ".github/workflows/deploy-terrabar-cloudflare.yml"
   workflow_dispatch:
 
 permissions:
@@ -78,19 +68,22 @@ jobs:
           if (!config.main) {
             throw new Error('Refusing deployment: generated Worker entry point is missing.');
           }
-          config.name = 'terrabar-market';
+          config.name = 'terraba-arash';
           config.routes = [
             { pattern: 'terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' },
             { pattern: 'www.terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' }
           ];
           fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
           const verified = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (verified.name !== 'terraba-arash') {
+            throw new Error('Refusing deployment: unexpected Worker name ' + verified.name);
+          }
           for (const hostname of ['terrabar.ir', 'www.terrabar.ir']) {
             if (!(verified.routes || []).some(route => route.pattern === hostname + '/*' && route.zone_id === '5abde3806e64424f9179eb509cabe824' && !route.custom_domain)) {
               throw new Error('Refusing deployment: approved Worker route missing for ' + hostname);
             }
           }
-          console.log('Verified existing Terrabar Worker routes; DNS records are preserved.');
+          console.log('Verified the existing Terrabar Worker terraba-arash and approved routes; DNS records are preserved.');
           NODE
 
       - name: Deploy existing Terrabar Worker
