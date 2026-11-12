@@ -18,6 +18,7 @@ import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as AdminResetPasswordRouteImport } from './routes/admin-reset-password'
 import { Route as AnnounceRouteImport } from './routes/announce'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as CartRouteImport } from './routes/cart'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DesignPreviewRouteImport } from './routes/design-preview'
 import { Route as GuideRouteImport } from './routes/guide'
@@ -26,11 +27,12 @@ import { Route as LoginSellerRouteImport } from './routes/login-seller'
 import { Route as LoginSupplierRouteImport } from './routes/login-supplier'
 import { Route as MemberHomeRouteImport } from './routes/member-home'
 import { Route as MembershipRouteImport } from './routes/membership'
-import { Route as ProfessionalPurchaseRouteImport } from './routes/professional-purchase'
+import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as OrdersCompletedPreviewRouteImport } from './routes/orders-completed-preview'
 import { Route as OrdersCurrentPreviewRouteImport } from './routes/orders-current-preview'
-import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ProductsRouteImport } from './routes/products'
+import { Route as ProfessionalPurchaseRouteImport } from './routes/professional-purchase'
+import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RulesRouteImport } from './routes/rules'
 import { Route as SellerAccountPreviewRouteImport } from './routes/seller-account-preview'
@@ -85,6 +87,11 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CartRoute = CartRouteImport.update({
+  id: '/cart',
+  path: '/cart',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
@@ -125,6 +132,11 @@ const MembershipRoute = MembershipRouteImport.update({
   path: '/membership',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrdersRoute = OrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrdersCompletedPreviewRoute = OrdersCompletedPreviewRouteImport.update({
   id: '/orders-completed-preview',
   path: '/orders-completed-preview',
@@ -135,6 +147,11 @@ const OrdersCurrentPreviewRoute = OrdersCurrentPreviewRouteImport.update({
   path: '/orders-current-preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductsRoute = ProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfessionalPurchaseRoute = ProfessionalPurchaseRouteImport.update({
   id: '/professional-purchase',
   path: '/professional-purchase',
@@ -143,11 +160,6 @@ const ProfessionalPurchaseRoute = ProfessionalPurchaseRouteImport.update({
 const RequestsRoute = RequestsRouteImport.update({
   id: '/requests',
   path: '/requests',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProductsRoute = ProductsRouteImport.update({
-  id: '/products',
-  path: '/products',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -201,6 +213,7 @@ export interface FileRoutesByFullPath {
   '/admin-reset-password': typeof AdminResetPasswordRoute
   '/announce': typeof AnnounceRoute
   '/auth': typeof AuthRoute
+  '/cart': typeof CartRoute
   '/contact': typeof ContactRoute
   '/design-preview': typeof DesignPreviewRoute
   '/guide': typeof GuideRoute
@@ -209,11 +222,12 @@ export interface FileRoutesByFullPath {
   '/login-supplier': typeof LoginSupplierRoute
   '/member-home': typeof MemberHomeRoute
   '/membership': typeof MembershipRoute
-  '/professional-purchase': typeof ProfessionalPurchaseRoute
+  '/orders': typeof OrdersRoute
   '/orders-completed-preview': typeof OrdersCompletedPreviewRoute
   '/orders-current-preview': typeof OrdersCurrentPreviewRoute
-  '/requests': typeof RequestsRoute
   '/products': typeof ProductsRoute
+  '/professional-purchase': typeof ProfessionalPurchaseRoute
+  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/rules': typeof RulesRoute
   '/seller-account-preview': typeof SellerAccountPreviewRoute
@@ -233,6 +247,7 @@ export interface FileRoutesByTo {
   '/admin-reset-password': typeof AdminResetPasswordRoute
   '/announce': typeof AnnounceRoute
   '/auth': typeof AuthRoute
+  '/cart': typeof CartRoute
   '/contact': typeof ContactRoute
   '/design-preview': typeof DesignPreviewRoute
   '/guide': typeof GuideRoute
@@ -241,11 +256,12 @@ export interface FileRoutesByTo {
   '/login-supplier': typeof LoginSupplierRoute
   '/member-home': typeof MemberHomeRoute
   '/membership': typeof MembershipRoute
-  '/professional-purchase': typeof ProfessionalPurchaseRoute
+  '/orders': typeof OrdersRoute
   '/orders-completed-preview': typeof OrdersCompletedPreviewRoute
   '/orders-current-preview': typeof OrdersCurrentPreviewRoute
-  '/requests': typeof RequestsRoute
   '/products': typeof ProductsRoute
+  '/professional-purchase': typeof ProfessionalPurchaseRoute
+  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/rules': typeof RulesRoute
   '/seller-account-preview': typeof SellerAccountPreviewRoute
@@ -266,6 +282,7 @@ export interface FileRoutesById {
   '/admin-reset-password': typeof AdminResetPasswordRoute
   '/announce': typeof AnnounceRoute
   '/auth': typeof AuthRoute
+  '/cart': typeof CartRoute
   '/contact': typeof ContactRoute
   '/design-preview': typeof DesignPreviewRoute
   '/guide': typeof GuideRoute
@@ -274,11 +291,12 @@ export interface FileRoutesById {
   '/login-supplier': typeof LoginSupplierRoute
   '/member-home': typeof MemberHomeRoute
   '/membership': typeof MembershipRoute
-  '/professional-purchase': typeof ProfessionalPurchaseRoute
+  '/orders': typeof OrdersRoute
   '/orders-completed-preview': typeof OrdersCompletedPreviewRoute
   '/orders-current-preview': typeof OrdersCurrentPreviewRoute
-  '/requests': typeof RequestsRoute
   '/products': typeof ProductsRoute
+  '/professional-purchase': typeof ProfessionalPurchaseRoute
+  '/requests': typeof RequestsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/rules': typeof RulesRoute
   '/seller-account-preview': typeof SellerAccountPreviewRoute
@@ -300,6 +318,7 @@ export interface FileRouteTypes {
     | '/admin-reset-password'
     | '/announce'
     | '/auth'
+    | '/cart'
     | '/contact'
     | '/design-preview'
     | '/guide'
@@ -308,11 +327,12 @@ export interface FileRouteTypes {
     | '/login-supplier'
     | '/member-home'
     | '/membership'
-    | '/professional-purchase'
+    | '/orders'
     | '/orders-completed-preview'
     | '/orders-current-preview'
-    | '/requests'
     | '/products'
+    | '/professional-purchase'
+    | '/requests'
     | '/reset-password'
     | '/rules'
     | '/seller-account-preview'
@@ -332,6 +352,7 @@ export interface FileRouteTypes {
     | '/admin-reset-password'
     | '/announce'
     | '/auth'
+    | '/cart'
     | '/contact'
     | '/design-preview'
     | '/guide'
@@ -340,9 +361,11 @@ export interface FileRouteTypes {
     | '/login-supplier'
     | '/member-home'
     | '/membership'
-    | '/professional-purchase'
+    | '/orders'
     | '/orders-completed-preview'
     | '/orders-current-preview'
+    | '/products'
+    | '/professional-purchase'
     | '/requests'
     | '/reset-password'
     | '/rules'
@@ -363,6 +386,7 @@ export interface FileRouteTypes {
     | '/admin-reset-password'
     | '/announce'
     | '/auth'
+    | '/cart'
     | '/contact'
     | '/design-preview'
     | '/guide'
@@ -371,9 +395,11 @@ export interface FileRouteTypes {
     | '/login-supplier'
     | '/member-home'
     | '/membership'
-    | '/professional-purchase'
+    | '/orders'
     | '/orders-completed-preview'
     | '/orders-current-preview'
+    | '/products'
+    | '/professional-purchase'
     | '/requests'
     | '/reset-password'
     | '/rules'
@@ -395,6 +421,7 @@ export interface RootRouteChildren {
   AdminResetPasswordRoute: typeof AdminResetPasswordRoute
   AnnounceRoute: typeof AnnounceRoute
   AuthRoute: typeof AuthRoute
+  CartRoute: typeof CartRoute
   ContactRoute: typeof ContactRoute
   DesignPreviewRoute: typeof DesignPreviewRoute
   GuideRoute: typeof GuideRoute
@@ -403,11 +430,12 @@ export interface RootRouteChildren {
   LoginSupplierRoute: typeof LoginSupplierRoute
   MemberHomeRoute: typeof MemberHomeRoute
   MembershipRoute: typeof MembershipRoute
-  ProfessionalPurchaseRoute: typeof ProfessionalPurchaseRoute
+  OrdersRoute: typeof OrdersRoute
   OrdersCompletedPreviewRoute: typeof OrdersCompletedPreviewRoute
   OrdersCurrentPreviewRoute: typeof OrdersCurrentPreviewRoute
-  RequestsRoute: typeof RequestsRoute
   ProductsRoute: typeof ProductsRoute
+  ProfessionalPurchaseRoute: typeof ProfessionalPurchaseRoute
+  RequestsRoute: typeof RequestsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   RulesRoute: typeof RulesRoute
   SellerAccountPreviewRoute: typeof SellerAccountPreviewRoute
@@ -483,6 +511,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cart': {
+      id: '/cart'
+      path: '/cart'
+      fullPath: '/cart'
+      preLoaderRoute: typeof CartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/contact': {
       id: '/contact'
       path: '/contact'
@@ -532,18 +567,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MemberHomeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/professional-purchase': {
-      id: '/professional-purchase'
-      path: '/professional-purchase'
-      fullPath: '/professional-purchase'
-      preLoaderRoute: typeof ProfessionalPurchaseRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/membership': {
       id: '/membership'
       path: '/membership'
       fullPath: '/membership'
       preLoaderRoute: typeof MembershipRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders': {
+      id: '/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orders-completed-preview': {
@@ -560,18 +595,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersCurrentPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/requests': {
-      id: '/requests'
-      path: '/requests'
-      fullPath: '/requests'
-      preLoaderRoute: typeof RequestsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/products': {
       id: '/products'
       path: '/products'
       fullPath: '/products'
       preLoaderRoute: typeof ProductsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/professional-purchase': {
+      id: '/professional-purchase'
+      path: '/professional-purchase'
+      fullPath: '/professional-purchase'
+      preLoaderRoute: typeof ProfessionalPurchaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requests': {
+      id: '/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof RequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -643,6 +685,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminResetPasswordRoute: AdminResetPasswordRoute,
   AnnounceRoute: AnnounceRoute,
   AuthRoute: AuthRoute,
+  CartRoute: CartRoute,
   ContactRoute: ContactRoute,
   DesignPreviewRoute: DesignPreviewRoute,
   GuideRoute: GuideRoute,
@@ -651,11 +694,12 @@ const rootRouteChildren: RootRouteChildren = {
   LoginSupplierRoute: LoginSupplierRoute,
   MemberHomeRoute: MemberHomeRoute,
   MembershipRoute: MembershipRoute,
-  ProfessionalPurchaseRoute: ProfessionalPurchaseRoute,
+  OrdersRoute: OrdersRoute,
   OrdersCompletedPreviewRoute: OrdersCompletedPreviewRoute,
   OrdersCurrentPreviewRoute: OrdersCurrentPreviewRoute,
-  RequestsRoute: RequestsRoute,
   ProductsRoute: ProductsRoute,
+  ProfessionalPurchaseRoute: ProfessionalPurchaseRoute,
+  RequestsRoute: RequestsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   RulesRoute: RulesRoute,
   SellerAccountPreviewRoute: SellerAccountPreviewRoute,
