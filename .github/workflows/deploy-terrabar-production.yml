@@ -40,33 +40,11 @@ jobs:
             exit 1
           fi
 
-      - name: Validate approved Supabase settings
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-        run: |
-          set -euo pipefail
-          for name in VITE_SUPABASE_URL VITE_SUPABASE_PUBLISHABLE_KEY; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing GitHub Actions secret: $name"
-              exit 1
-            fi
-          done
-          VITE_SUPABASE_URL="${VITE_SUPABASE_URL%/}"
-          if [ "$VITE_SUPABASE_URL" != "https://gznsxqeyhnuzglliijzz.supabase.co" ]; then
-            echo "::error::Refusing deployment: Supabase URL is not the approved Terrabar project."
-            exit 1
-          fi
-
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 
       - name: Build release candidate
         run: bun run build:worker
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-
       - name: Configure and verify the existing production Worker
         run: |
           set -euo pipefail
