@@ -37,8 +37,8 @@ jobs:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
-          DROPBOX_SOURCE_PATH: ${{ inputs.dropbox_source_path }}
-          DROPBOX_OUTPUT_FOLDER: ${{ inputs.dropbox_output_folder }}
+          DROPBOX_SOURCE_PATH: ${{ inputs.dropbox_source_path || '/TERRABAR – Media Center/00 – Upload Inbox/Amir ghofrani - IMG_8251.mov' }}
+          DROPBOX_OUTPUT_FOLDER: ${{ inputs.dropbox_output_folder || vars.DROPBOX_OUTPUT_FOLDER }}
         run: |
           set -euo pipefail
           test -n "$DROPBOX_APP_KEY"
