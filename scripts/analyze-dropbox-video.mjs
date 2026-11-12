@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { promisify } from "node:util";
@@ -110,7 +110,7 @@ if (metadata.size > 2 * 1024 * 1024 * 1024) {
   throw new Error("Video exceeds the 2 GB test limit.");
 }
 const folder = await dbx("files/get_metadata", token, { path: outputFolder });
-if (folder[".tag"] !== "folder" || folder.sharing_info?.shared_folder_id) {
+if (folder[".tag"] !== "folder" || folder.sharing_info?.shared_folder_id || folder.sharing_info?.parent_shared_folder_id || folder.sharing_info?.is_inside_team_folder) {
   throw new Error("Output folder must exist and must not be a shared folder.");
 }
 
