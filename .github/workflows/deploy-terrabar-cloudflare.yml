@@ -56,7 +56,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build production app
-        run: bun run build
+        run: bun run build:worker
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
