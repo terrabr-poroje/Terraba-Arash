@@ -21,6 +21,7 @@ Create a Dropbox API app with **Full Dropbox** access and only these scopes:
 - `files.metadata.read`
 - `files.content.read`
 - `files.content.write`
+- `sharing.read` (used only to reject output folders that already have shared links)
 
 Enable OAuth code flow with offline access and generate a refresh token for the Terrabar Dropbox account. Do not paste tokens into chat or commit them to GitHub.
 
