@@ -10,6 +10,7 @@ on:
       - "bun.lock"
       - "bun.lockb"
       - "vite.config.*"
+      - "wrangler.json"
       - ".github/workflows/deploy-terrabar-cloudflare.yml"
   workflow_dispatch:
 
@@ -17,11 +18,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: terrabar-production-deploy
+  group: terraba-arash-production-deploy
   cancel-in-progress: false
 
 jobs:
   build-and-deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -78,19 +80,37 @@ jobs:
           if (!config.main) {
             throw new Error('Refusing deployment: generated Worker entry point is missing.');
           }
-          config.name = 'terrabar-market';
-          config.routes = [
-            { pattern: 'terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' },
-            { pattern: 'www.terrabar.ir/*', zone_id: '5abde3806e64424f9179eb509cabe824' }
-          ];
+          const expectedWorker = 'terraba-arash';
+          if (Object.prototype.hasOwnProperty.call(config, 'routes')) {
+            throw new Error('Refusing deployment: routes must remain managed by the existing Cloudflare custom-domain configuration.');
+          }
+          if (config.assets?.binding !== 'ASSETS') {
+            throw new Error('Refusing deployment: expected ASSETS binding is missing.');
+          }
+          const d1 = (config.d1_databases || []).find(binding =>
+            binding.binding === 'DB' && binding.database_id === '9da7735b-e4c9-4f7f-9abe-53ba1545c60e'
+          );
+          if (!d1) {
+            throw new Error('Refusing deployment: existing Terrabar D1 binding does not match.');
+          }
+          config.name = expectedWorker;
+          config.keep_vars = true;
+          config.secrets = {
+            ...(config.secrets || {}),
+            required: [...new Set([...(config.secrets?.required || []), 'SMS_IR_API_KEY'])]
+          };
           fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
           const verified = JSON.parse(fs.readFileSync(path, 'utf8'));
-          for (const hostname of ['terrabar.ir', 'www.terrabar.ir']) {
-            if (!(verified.routes || []).some(route => route.pattern === hostname + '/*' && route.zone_id === '5abde3806e64424f9179eb509cabe824' && !route.custom_domain)) {
-              throw new Error('Refusing deployment: approved Worker route missing for ' + hostname);
-            }
+          if (verified.name !== expectedWorker || verified.keep_vars !== true) {
+            throw new Error('Refusing deployment: Worker target or keep-vars safeguard is incorrect.');
           }
-          console.log('Verified existing Terrabar Worker routes; DNS records are preserved.');
+          if (Object.prototype.hasOwnProperty.call(verified, 'routes')) {
+            throw new Error('Refusing deployment: generated config must not manage domain routes.');
+          }
+          if (!verified.secrets?.required?.includes('SMS_IR_API_KEY')) {
+            throw new Error('Refusing deployment: required SMS secret guard is missing.');
+          }
+          console.log('Verified target terraba-arash; retained ASSETS and D1 bindings; preserved dashboard vars; required existing SMS_IR_API_KEY; no routes will be changed.');
           NODE
 
       - name: Deploy existing Terrabar Worker
