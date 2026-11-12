@@ -8,7 +8,7 @@ import {
   LogIn,
   Menu,
 } from "lucide-react";
-import { pageHead } from "@/lib/marketplace";
+import { pageHead } from "@/lib/page-meta";
 
 export const Route = createFileRoute("/")({
   head: () =>
