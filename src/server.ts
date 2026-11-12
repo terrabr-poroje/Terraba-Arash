@@ -519,12 +519,20 @@ export default {
             userId?: string;
             memberId?: string;
             roleCode?: string;
+            fullName?: string;
+            phone?: string;
+            city?: string;
+            province?: string;
             note?: string;
           };
           const result = await resubmitSellingApprovalRequest({
             userId: body.userId,
             memberId: body.memberId,
             roleCode: body.roleCode,
+            fullName: body.fullName,
+            phone: body.phone,
+            city: body.city,
+            province: body.province,
             note: body.note,
           });
           return new Response(JSON.stringify(result), {

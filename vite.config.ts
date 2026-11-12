@@ -351,6 +351,10 @@ function smsDevApiPlugin(): Plugin {
                 userId: parsed.userId,
                 memberId: parsed.memberId,
                 roleCode: parsed.roleCode,
+                fullName: parsed.fullName,
+                phone: parsed.phone,
+                city: parsed.city,
+                province: parsed.province,
                 note: parsed.note,
               });
               res.setHeader("Content-Type", "application/json; charset=utf-8");

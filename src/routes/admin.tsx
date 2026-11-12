@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Dynamic queries target the audited production Supabase schema; generated client types are stale. */
 import { createFileRoute, Link } from "@tanstack/react-router";
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Eye, Package, ShieldAlert, Users, XCircle, Landmark, Wallet, KeyRound, Lock, Phone } from 'lucide-react';
+import { CheckCircle2, Eye, Package, ShieldAlert, Users, XCircle, Landmark, Wallet, KeyRound, Lock, Phone, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -94,26 +94,100 @@ function AdminPage() {
           },
         }));
 
+        // Read client storage pending requests as fallback/instant broadcast sync
+        let clientPending: MemberRequest[] = [];
+        try {
+          const raw = typeof window !== 'undefined' ? localStorage.getItem('tb_pending_requests') : null;
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              clientPending = list.map((r: any) => ({
+                id: r.id,
+                member_id: r.member_id,
+                role_code: r.role_code,
+                approval_status: r.approval_status || 'pending',
+                created_at: r.created_at || new Date().toISOString(),
+                request_note: r.request_note || null,
+                members: {
+                  full_name: r.member_name || r.members?.full_name || 'کاربر ترابار',
+                  phone: r.member_phone || r.members?.phone || '—',
+                  city: r.member_city || r.members?.city || 'ثبت نشده',
+                },
+              }));
+            }
+          }
+        } catch (_err) {
+          // ignore storage read error
+        }
+
         (supabase as any).from('member_roles')
           .select('id, member_id, role_code, approval_status, created_at, request_note, members!inner(full_name, phone, city)')
           .eq('approval_status', 'pending')
           .order('created_at', { ascending: false })
           .then(({ data }: { data: MemberRequest[] | null }) => {
             const combinedMap = new Map<string, MemberRequest>();
-            for (const item of serverReqs) combinedMap.set(item.id, item);
+            for (const item of clientPending) combinedMap.set(item.id, item);
             for (const item of (data ?? [])) combinedMap.set(item.id, item);
-            setRequests(Array.from(combinedMap.values()));
+            for (const item of serverReqs) combinedMap.set(item.id, item);
+
+            const pendingList = Array.from(combinedMap.values()).filter(
+              item => item.approval_status === 'pending'
+            );
+            // CRITICAL: Sort strictly newest first (latest announcement at the top)
+            pendingList.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+            setRequests(pendingList);
           })
           .catch(() => {
-            setRequests(serverReqs);
+            const combinedMap = new Map<string, MemberRequest>();
+            for (const item of clientPending) combinedMap.set(item.id, item);
+            for (const item of serverReqs) combinedMap.set(item.id, item);
+            const pendingList = Array.from(combinedMap.values()).filter(
+              item => item.approval_status === 'pending'
+            );
+            pendingList.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+            setRequests(pendingList);
           });
       })
       .catch(() => {
+        let clientPending: MemberRequest[] = [];
+        try {
+          const raw = typeof window !== 'undefined' ? localStorage.getItem('tb_pending_requests') : null;
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              clientPending = list.map((r: any) => ({
+                id: r.id,
+                member_id: r.member_id,
+                role_code: r.role_code,
+                approval_status: r.approval_status || 'pending',
+                created_at: r.created_at || new Date().toISOString(),
+                request_note: r.request_note || null,
+                members: {
+                  full_name: r.member_name || r.members?.full_name || 'کاربر ترابار',
+                  phone: r.member_phone || r.members?.phone || '—',
+                  city: r.member_city || r.members?.city || 'ثبت نشده',
+                },
+              }));
+            }
+          }
+        } catch (_err) {
+          // ignore storage read error
+        }
+
         (supabase as any).from('member_roles')
           .select('id, member_id, role_code, approval_status, created_at, request_note, members!inner(full_name, phone, city)')
           .eq('approval_status', 'pending')
           .order('created_at', { ascending: false })
-          .then(({ data }: { data: MemberRequest[] | null }) => setRequests(data ?? []));
+          .then(({ data }: { data: MemberRequest[] | null }) => {
+            const combinedMap = new Map<string, MemberRequest>();
+            for (const item of clientPending) combinedMap.set(item.id, item);
+            for (const item of (data ?? [])) combinedMap.set(item.id, item);
+            const pendingList = Array.from(combinedMap.values()).filter(
+              item => item.approval_status === 'pending'
+            );
+            pendingList.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+            setRequests(pendingList);
+          });
       });
     (supabase as any).from('members')
       .select('id, full_name, phone, city, role, verification_status, joined_at, is_archived')
@@ -127,7 +201,10 @@ function AdminPage() {
       .select('id, name, engine, quality, city, price, count, quantity, unit, status, created_at')
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
-      .then(({ data }: { data: PendingLoad[] | null }) => setPendingLoads(data ?? []));
+      .then(({ data }: { data: PendingLoad[] | null }) => {
+        const sorted = (data ?? []).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        setPendingLoads(sorted);
+      });
     (supabase as any).from('orders')
       .select('id, invoice_number, customer_name, customer_city, quantity, unit, price, total_price, status, payment_status, delivery_status, created_at')
       .order('created_at', { ascending: false })
@@ -183,7 +260,29 @@ function AdminPage() {
       });
     }
   }
-  useEffect(() => { if (canManage) refresh(); }, [canManage]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    refresh();
+
+    // Auto-refresh periodically so new user requests and announcements appear in real-time
+    const intervalId = setInterval(() => {
+      refresh();
+    }, 10000);
+
+    // Cross-tab and local broadcast event listeners
+    const handleRequestEvent = () => {
+      refresh();
+    };
+    window.addEventListener('terrabar-request-submitted', handleRequestEvent);
+    window.addEventListener('storage', handleRequestEvent);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('terrabar-request-submitted', handleRequestEvent);
+      window.removeEventListener('storage', handleRequestEvent);
+    };
+  }, [canManage]);
 
   async function sendRatingReply(ratingId: string) {
     const message = (ratingReplies[ratingId] ?? '').trim();
@@ -222,6 +321,15 @@ function AdminPage() {
     } catch (e) {
       console.warn("Supabase approval sync note:", e);
     }
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('tb_pending_requests') : null;
+      if (raw) {
+        const list = JSON.parse(raw);
+        localStorage.setItem('tb_pending_requests', JSON.stringify(list.filter((x: any) => x.id !== request.id && x.member_id !== request.member_id)));
+      }
+    } catch (_err) {
+      // ignore storage write error
+    }
     refresh();
   }
 
@@ -233,7 +341,7 @@ function AdminPage() {
         body: JSON.stringify({ roleId: request.id, action: 'rejected' }),
       });
       toast.info('درخواست عضویت رد شد.');
-    } catch {
+    } catch (_err) {
       // Continue
     }
     try {
@@ -242,6 +350,15 @@ function AdminPage() {
         .eq('id', request.id);
     } catch (e) {
       console.warn("Supabase reject sync note:", e);
+    }
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('tb_pending_requests') : null;
+      if (raw) {
+        const list = JSON.parse(raw);
+        localStorage.setItem('tb_pending_requests', JSON.stringify(list.filter((x: any) => x.id !== request.id && x.member_id !== request.member_id)));
+      }
+    } catch (_err) {
+      // ignore storage write error
     }
     refresh();
   }
@@ -422,26 +539,44 @@ function AdminPage() {
 
   return (
     <section className="bg-market-surface py-12"><div className="site-container">
-      <h1 className="text-2xl font-extrabold sm:text-3xl">پنل مدیریت ترابار</h1>
-      {!isAdmin && <p className="mt-2 text-sm text-muted-foreground">دسترسی شما فقط به درخواست‌ها و بارهای شهرهای تخصیص‌یافته محدود است.</p>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold sm:text-3xl">پنل مدیریت ترابار</h1>
+          {!isAdmin && <p className="mt-2 text-sm text-muted-foreground">دسترسی شما فقط به درخواست‌ها و بارهای شهرهای تخصیص‌یافته محدود است.</p>}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { refresh(); toast.info("فهرست درخواست‌ها بروزرسانی شد."); }}
+          className="gap-2 rounded-xl border-border bg-card shadow-xs hover:bg-muted"
+        >
+          <RefreshCw className="size-4 text-primary" />
+          <span>بروزرسانی فهرست</span>
+        </Button>
+      </div>
 
-      {/* Attractive blinking notification banner when requests await admin approval */}
+      {/* Calm, dignified notification banner when requests await admin approval */}
       {requests.length > 0 && (
         <div className="relative mt-6 overflow-hidden rounded-2xl border-2 border-amber-500 bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-amber-500/20 p-4 sm:p-5 shadow-lg shadow-amber-500/10 transition-all">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <span className="relative mt-1 flex size-4 shrink-0">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-80"></span>
-                <span className="relative inline-flex size-4 rounded-full bg-amber-600"></span>
+              <span className="relative mt-1.5 flex size-3.5 shrink-0">
+                <span className="absolute inline-flex size-full rounded-full bg-amber-400 opacity-60 motion-safe:animate-pulse [animation-duration:3s]"></span>
+                <span className="relative inline-flex size-3.5 rounded-full bg-amber-600 shadow-sm"></span>
               </span>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-base font-black text-amber-950 sm:text-lg">
                     اعلان فوری: {faNumber(requests.length)} درخواست فعال برای تأیید امکانات فروش حرفه‌ای در انتظار شماست!
                   </h2>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white animate-pulse">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white shadow-xs">
                     نیاز به اقدام مدیر
                   </span>
+                  {requests[0] && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-600/30 bg-amber-200/90 px-2.5 py-0.5 text-xs font-bold text-amber-950">
+                      جدیدترین اعلان: {requests[0].members?.full_name || 'کاربر'} ({roleLabels[requests[0].role_code] || requests[0].role_code})
+                    </span>
+                  )}
                 </div>
                 <p className="mt-1.5 text-xs leading-6 text-amber-900/95 sm:text-sm">
                   کاربران بارفروش و تأمین‌کننده در انتظار تأیید شما هستند. با تایید هر درخواست، وضعیت در پایگاه داده ذخیره شده و قفل اعلان بار و ویترین اختصاصی برای کاربر باز می‌شود.
@@ -451,7 +586,7 @@ function AdminPage() {
             {tab !== 'requests' && (
               <Button
                 onClick={() => setTab('requests')}
-                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl px-4 py-2.5 shadow animate-pulse"
+                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm rounded-xl px-4 py-2.5 shadow-sm"
               >
                 مشاهده و تایید درخواست‌ها ({faNumber(requests.length)})
               </Button>
@@ -467,7 +602,7 @@ function AdminPage() {
           <span>عضویت و فروش ({faNumber(requests.length)})</span>
           {requests.length > 0 && (
             <span className="relative mr-1.5 flex size-2.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-90"></span>
+              <span className="absolute inline-flex size-full rounded-full bg-amber-400 opacity-60 motion-safe:animate-pulse [animation-duration:3s]"></span>
               <span className="relative inline-flex size-2.5 rounded-full bg-amber-500"></span>
             </span>
           )}
@@ -488,26 +623,38 @@ function AdminPage() {
       {tab === 'requests' && (
         <div className="mt-6 grid gap-4">
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs leading-6 text-foreground">
-            <strong>قانون تأیید دسترسی فروش:</strong> خرید ویژه حرفه‌ای برای بارفروشان و تأمین‌کنندگان بلافاصله و بدون نیاز به تأیید باز است. تنها «امکانات فروش حرفه‌ای» (اعلان بار جدید، مدیریت بارها و ویترین اختصاصی) نیازمند تأیید در این بخش است. با کلیک بر روی «تأیید و بازگشایی امکانات فروش»، وضعیت در دیتابیس ثبت شده و قفل پنل فروش کاربر باز می‌گردد.
+            <strong>قانون تأیید دسترسی فروش:</strong> خرید ویژه حرفه‌ای برای بارفروشان و تأمین‌کنندگان بلافاصله و بدون نیاز به تأیید باز است. تنها «امکانات فروش حرفه‌ای» (اعلان بار جدید، مدیریت بارها و ویترین اختصاصی) نیازمند تأیید در این بخش است. جدیدترین اعلان‌ها در بالای فهرست قرار دارند. با کلیک بر روی «تأیید و بازگشایی امکانات فروش»، وضعیت در دیتابیس ثبت شده و قفل پنل فروش کاربر باز می‌گردد.
           </div>
           {requests.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">درخواست در انتظاری وجود ندارد؛ تمامی امکانات فروش تعیین تکلیف شده‌اند.</p>}
-          {requests.map(request => (
-            <div key={request.id} className="relative rounded-2xl border-2 border-amber-300/80 bg-card p-5 shadow-sm transition hover:shadow-md">
+          {requests.map((request, index) => (
+            <div key={request.id} className={`relative rounded-2xl border-2 ${index === 0 ? 'border-emerald-500/80 bg-emerald-50/20 dark:bg-emerald-950/20' : 'border-amber-300/80 bg-card'} p-5 shadow-sm transition hover:shadow-md`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <strong className="text-base font-extrabold">{request.members?.full_name ?? 'نام ثبت نشده'}</strong>
                   <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs font-bold text-foreground">
                     {(roleLabels[request.role_code] ?? request.role_code)}
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100/90 px-2.5 py-0.5 text-xs font-bold text-amber-900 animate-pulse">
+                  {index === 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500 bg-emerald-100 px-2.5 py-0.5 text-xs font-black text-emerald-900 shadow-xs dark:bg-emerald-950 dark:text-emerald-200">
+                      ★ جدیدترین اعلان
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-950 dark:border-amber-700 dark:bg-amber-900/80 dark:text-amber-200">
                     <span className="relative flex size-2">
-                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-80"></span>
+                      <span className="absolute inline-flex size-full rounded-full bg-amber-400 opacity-60 motion-safe:animate-pulse [animation-duration:3s]"></span>
                       <span className="relative inline-flex size-2 rounded-full bg-amber-600"></span>
                     </span>
                     در انتظار تأیید امکانات فروش حرفه‌ای
                   </span>
                 </div>
-                <span className="text-xs font-mono text-muted-foreground" dir="ltr">{request.members?.phone ?? '—'}</span>
+                <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
+                  {request.created_at && (
+                    <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[11px]" dir="ltr">
+                      {new Date(request.created_at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })} - {new Date(request.created_at).toLocaleDateString('fa-IR')}
+                    </span>
+                  )}
+                  <span className="font-mono" dir="ltr">{request.members?.phone ?? '—'}</span>
+                </div>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">شهر فعالیت: {request.members?.city ?? 'شهر ثبت نشده'}</p>
               {request.request_note && (

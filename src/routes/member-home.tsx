@@ -161,41 +161,73 @@ function MemberHome() {
     setResendNotice("");
     try {
       const targetRole = roleData?.hasSupplierRole ? "supplier" : "seller";
+      const payload = {
+        userId: user.id,
+        memberId: roleData?.memberId || authMember?.id,
+        roleCode: targetRole,
+        fullName: user.full_name || roleData?.name || authMember?.full_name || "کاربر ترابار",
+        phone: user.phone || authMember?.phone || "",
+        city: user.city || roleData?.city || authMember?.city || "کرج",
+        province: user.province || authMember?.province || "البرز",
+        note: "درخواست مجدد بررسی و فعال‌سازی امکانات فروش حرفه‌ای",
+      };
+
       const res = await fetch("/api/membership/resubmit-selling-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          memberId: roleData?.memberId,
-          roleCode: targetRole,
-          note: "درخواست مجدد بررسی و فعال‌سازی امکانات فروش حرفه‌ای",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
 
-      // Background Supabase sync
-      try {
-        if (roleData?.memberId) {
-          await (supabase as any)
-            .from("member_roles")
-            .update({
-              approval_status: "pending",
-              approved_by: null,
-              approved_at: null,
-              request_note: "درخواست مجدد بررسی و فعال‌سازی امکانات فروش حرفه‌ای",
-            })
-            .eq("member_id", roleData.memberId)
-            .in("role_code", ["supplier", "seller", "bar_seller"]);
+      // Background Supabase sync & client storage broadcast for instant Admin visibility
+      if (typeof window !== "undefined") {
+        try {
+          const reqItem = {
+            id: data?.requestId || `role_req_${Date.now()}_${targetRole}`,
+            member_id: payload.memberId || `mem_${payload.userId}`,
+            role_code: targetRole,
+            approval_status: "pending",
+            created_at: new Date().toISOString(),
+            request_note: payload.note,
+            member_name: payload.fullName,
+            member_phone: payload.phone,
+            member_city: payload.city,
+            member_province: payload.province,
+            members: {
+              full_name: payload.fullName,
+              phone: payload.phone,
+              city: payload.city,
+            },
+          };
+          const rawPending = localStorage.getItem("tb_pending_requests");
+          const existingList: any[] = rawPending ? JSON.parse(rawPending) : [];
+          const updatedList = [reqItem, ...existingList.filter((x: any) => x.id !== reqItem.id && x.member_id !== reqItem.member_id)];
+          localStorage.setItem("tb_pending_requests", JSON.stringify(updatedList));
+          localStorage.setItem("tb_request_last_updated", String(Date.now()));
+          window.dispatchEvent(new CustomEvent("terrabar-request-submitted", { detail: reqItem }));
+
+          if (roleData?.memberId) {
+            await (supabase as any)
+              .from("member_roles")
+              .update({
+                approval_status: "pending",
+                approved_by: null,
+                approved_at: null,
+                request_note: payload.note,
+              })
+              .eq("member_id", roleData.memberId)
+              .in("role_code", ["supplier", "seller", "bar_seller"]);
+          }
+        } catch {
+          // Best effort
         }
-      } catch {
-        // Best effort
       }
 
       if (data?.success) {
-        setResendNotice(data.message || "درخواست شما با موفقیت برای مدیر ارسال شد و در نوبت بررسی قرار گرفت.");
+        setResendNotice(data.message || "درخواست شما با موفقیت برای مدیر ارسال شد و در بالای کارتابل مدیریت قرار گرفت.");
         toast.success("درخواست تأیید امکانات فروش با موفقیت به مدیر ارسال شد.");
       } else {
-        setResendNotice("درخواست بررسی مجدد برای مدیر ارسال گردید.");
+        setResendNotice("درخواست بررسی مجدد برای مدیر ارسال گردید و در نوبت قرار گرفت.");
         toast.success("درخواست ثبت شد.");
       }
     } catch {
@@ -319,16 +351,16 @@ function MemberHome() {
               <div className="relative mb-5 overflow-hidden rounded-2xl border-2 border-amber-400 bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-amber-500/15 p-4 sm:p-5 shadow-md shadow-amber-500/10 transition-all dark:border-amber-500/70 dark:bg-amber-950/40">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-start gap-3">
-                    <span className="relative mt-1 flex size-3.5 shrink-0">
-                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-500 opacity-75"></span>
-                      <span className="relative inline-flex size-3.5 rounded-full bg-amber-600"></span>
+                    <span className="relative mt-1.5 flex size-3 shrink-0">
+                      <span className="absolute inline-flex size-full rounded-full bg-amber-400 opacity-60 motion-safe:animate-pulse [animation-duration:3s]"></span>
+                      <span className="relative inline-flex size-3 rounded-full bg-amber-600 shadow-sm"></span>
                     </span>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <strong className="text-base font-black text-amber-950 dark:text-amber-200">
                           اعلان: این بخش تا زمان تأیید مدیر غیرفعال است
                         </strong>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-200/90 px-2.5 py-0.5 text-xs font-bold text-amber-900 animate-pulse dark:bg-amber-900 dark:text-amber-200">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/60 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-950 shadow-xs dark:border-amber-700 dark:bg-amber-900/80 dark:text-amber-200">
                           در انتظار تأیید مدیریت
                         </span>
                       </div>

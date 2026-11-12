@@ -1151,45 +1151,62 @@ export async function resubmitSellingApprovalRequest(params: {
   userId?: string;
   memberId?: string;
   roleCode?: string;
+  fullName?: string;
+  phone?: string;
+  city?: string;
+  province?: string;
   note?: string;
 }): Promise<{ success: boolean; message: string; requestId?: string }> {
   try {
     await initD1Schema();
     const db = getD1();
 
+    const cleanPhone = (params.phone || "").trim();
     let member: any = null;
+
     if (params.memberId) {
       member = await db.prepare("SELECT * FROM members WHERE id = ? LIMIT 1").bind(params.memberId).first<any>();
     }
     if (!member && params.userId) {
       member = await db.prepare("SELECT * FROM members WHERE auth_user_id = ? LIMIT 1").bind(params.userId).first<any>();
     }
-    if (!member && params.userId) {
-      const user = await db.prepare("SELECT * FROM users WHERE id = ? LIMIT 1").bind(params.userId).first<any>();
-      const memId = `mem_${params.userId}`;
-      const rawRole = params.roleCode || user?.role || "seller";
-      await db
-        .prepare(
-          "INSERT OR IGNORE INTO members (id, auth_user_id, full_name, phone, role, city, province, verification_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP)",
-        )
-        .bind(memId, params.userId, user?.full_name || "کاربر ترابار", user?.phone || "", rawRole, user?.city || "کرج", user?.province || "البرز")
-        .run();
-      member = await db.prepare("SELECT * FROM members WHERE id = ? OR auth_user_id = ? LIMIT 1").bind(memId, params.userId).first<any>();
+    if (!member && cleanPhone) {
+      member = await db.prepare("SELECT * FROM members WHERE phone = ? LIMIT 1").bind(cleanPhone).first<any>();
     }
 
-    if (!member) {
-      return { success: false, message: "پروفایل کاربری برای ثبت درخواست یافت نشد." };
-    }
-
-    const rawRole = params.roleCode || (member.role === "supplier" ? "supplier" : "seller");
+    const rawRole = params.roleCode || (member?.role === "supplier" ? "supplier" : "seller");
     const role = rawRole === "bar_seller" ? "seller" : rawRole;
     const note = params.note || "درخواست مجدد بررسی و فعال‌سازی امکانات فروش حرفه‌ای";
+    const fullName = params.fullName?.trim() || member?.full_name || "کاربر ترابار";
+    const city = params.city?.trim() || member?.city || "کرج";
+    const province = params.province?.trim() || member?.province || "البرز";
+    const phone = cleanPhone || member?.phone || "";
+
+    let memId: string;
+    if (member) {
+      memId = member.id;
+      await db
+        .prepare(
+          "UPDATE members SET full_name = ?, phone = COALESCE(NULLIF(?, ''), phone), city = ?, province = ?, role = ?, verification_status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(fullName, phone, city, province, role, memId)
+        .run();
+    } else {
+      memId = params.memberId || `mem_${params.userId || Date.now()}_${phone.slice(-4) || "req"}`;
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO members (id, auth_user_id, full_name, phone, role, city, province, verification_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        )
+        .bind(memId, params.userId || memId, fullName, phone, role, city, province)
+        .run();
+      member = await db.prepare("SELECT * FROM members WHERE id = ? OR auth_user_id = ? LIMIT 1").bind(memId, params.userId || memId).first<any>();
+    }
 
     const existing = await db
       .prepare(
         "SELECT * FROM member_roles WHERE member_id = ? AND (role_code = ? OR (role_code IN ('seller', 'bar_seller') AND ? IN ('seller', 'bar_seller'))) LIMIT 1",
       )
-      .bind(member.id, role, role)
+      .bind(memId, role, role)
       .first<any>();
 
     let reqId = existing?.id;
@@ -1207,18 +1224,18 @@ export async function resubmitSellingApprovalRequest(params: {
         .prepare(
           "INSERT INTO member_roles (id, member_id, role_code, approval_status, created_at, request_note) VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP, ?)",
         )
-        .bind(reqId, member.id, role, note)
+        .bind(reqId, memId, role, note)
         .run();
     }
 
     await db
-      .prepare("UPDATE members SET verification_status = 'pending' WHERE id = ?")
-      .bind(member.id)
+      .prepare("UPDATE members SET verification_status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .bind(memId)
       .run();
 
     return {
       success: true,
-      message: "درخواست بررسی امکانات فروش با موفقیت به مدیر ارسال شد.",
+      message: "درخواست بررسی امکانات فروش با موفقیت به مدیر ارسال شد و در کارتابل مدیریت ثبت گردید.",
       requestId: reqId,
     };
   } catch (err: any) {
