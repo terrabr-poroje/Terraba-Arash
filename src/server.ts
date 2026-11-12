@@ -153,7 +153,7 @@ export default {
       if (url.pathname === "/api/sms/send-otp" && request.method === "POST") {
         try {
           const body = (await request.json().catch(() => ({}))) as { mobile?: string };
-          const result = await sendOtpSms(body?.mobile || "");
+          const result = await sendOtpSms(body?.mobile || "", env as { SMS_IR_API_KEY?: string; SMS_IR_TEMPLATE_ID?: string });
           return new Response(JSON.stringify(result), {
             status: result.success ? 200 : 400,
             headers: {
@@ -189,7 +189,7 @@ export default {
           const code = body?.code || "";
 
           // 1. Verify SMS OTP code
-          const verifyResult = verifyOtpCode(mobile, code);
+          const verifyResult = await verifyOtpCode(mobile, code);
           if (!verifyResult.success) {
             return new Response(JSON.stringify(verifyResult), {
               status: 400,
