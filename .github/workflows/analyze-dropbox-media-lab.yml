@@ -1,0 +1,59 @@
+name: Terrabar private Dropbox video analysis (lab)
+
+on:
+  push:
+    branches: [media-processing-lab]
+    paths: [".media-lab-run"]
+  workflow_dispatch:
+    inputs:
+      dropbox_source_path:
+        description: "Exact Dropbox file path"
+        required: true
+        type: string
+      dropbox_output_folder:
+        description: "Existing private Dropbox folder (not shared)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    if: github.ref == 'refs/heads/media-processing-lab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Validate credentials and paths
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          DROPBOX_SOURCE_PATH: ${{ inputs.dropbox_source_path }}
+          DROPBOX_OUTPUT_FOLDER: ${{ inputs.dropbox_output_folder }}
+        run: |
+          set -euo pipefail
+          test -n "$DROPBOX_APP_KEY"
+          test -n "$DROPBOX_APP_SECRET"
+          test -n "$DROPBOX_REFRESH_TOKEN"
+          test -n "$DROPBOX_SOURCE_PATH"
+          test -n "$DROPBOX_OUTPUT_FOLDER"
+          case "$DROPBOX_OUTPUT_FOLDER" in
+            "/TERRABAR – Media Center"*) echo "Shared media-center folders are forbidden for analysis output."; exit 1 ;;
+          esac
+      - name: Analyze video and write private results to Dropbox
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          DROPBOX_SOURCE_PATH: ${{ inputs.dropbox_source_path }}
+          DROPBOX_OUTPUT_FOLDER: ${{ inputs.dropbox_output_folder }}
+        run: node scripts/analyze-dropbox-video.mjs
