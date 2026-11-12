@@ -62,7 +62,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build release candidate
-        run: bun run build
+        run: bun run build:worker
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -73,6 +73,9 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const path = '.output/server/wrangler.json';
+          if (!fs.existsSync(path)) {
+            throw new Error('Refusing deployment: Cloudflare Worker build output is missing.');
+          }
           const config = JSON.parse(fs.readFileSync(path, 'utf8'));
           if (!config.main) {
             throw new Error('Refusing deployment: generated Worker entry point is missing.');
