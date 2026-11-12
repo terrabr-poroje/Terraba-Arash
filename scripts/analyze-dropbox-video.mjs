@@ -103,7 +103,7 @@ const metadata = await dbx("files/get_metadata", token, {
   path: sourcePath,
   include_media_info: true,
 });
-if (metadata[".tag"] !== "file" || !/^video\//i.test(metadata.mime_type ?? "")) {
+if (metadata[".tag"] !== "file" || !/\.(mov|mp4|m4v|avi|mkv|webm)$/i.test(metadata.name ?? "")) {
   throw new Error("Selected Dropbox item is not a video file.");
 }
 if (metadata.size > 2 * 1024 * 1024 * 1024) {
