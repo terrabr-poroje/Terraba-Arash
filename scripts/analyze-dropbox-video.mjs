@@ -111,7 +111,11 @@ if (metadata.size > 2 * 1024 * 1024 * 1024) {
 }
 const folder = await dbx("files/get_metadata", token, { path: outputFolder });
 if (folder[".tag"] !== "folder" || folder.sharing_info?.shared_folder_id || folder.sharing_info?.parent_shared_folder_id || folder.sharing_info?.is_inside_team_folder) {
-  throw new Error("Output folder must exist and must not be a shared folder.");
+  throw new Error("Output folder must exist and must not be a shared or team folder.");
+}
+const links = await dbx("sharing/list_shared_links", token, { path: outputFolder, direct_only: true });
+if ((links.links ?? []).length > 0) {
+  throw new Error("Output folder has shared links; choose a folder with no shared links.");
 }
 
 const workDir = await mkdtemp(join(tmpdir(), "terrabar-media-"));
